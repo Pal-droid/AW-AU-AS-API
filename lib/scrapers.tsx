@@ -214,9 +214,11 @@ export class AnimeWorldScraper extends BaseScraper {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const html = await res.text()
       const $ = cheerio.load(html)
+
       return (
-        $("#downloadLink").attr("href") ||
         $("#alternativeDownloadLink").attr("href") ||
+        $("#downloadLink").attr("href") ||
+        $("#customDownloadButton").attr("href") ||
         $("video, iframe").first().attr("src") ||
         null
       )
@@ -334,7 +336,18 @@ export class AnimeSaturnScraper extends BaseScraper {
 
       if (!streamingLink) {
         console.log("[v0] AnimeSaturn: No streaming link found on page")
-        console.log("[v0] AnimeSaturn: Page content sample:", html.substring(0, 1000))
+        console.log(
+          "[v0] AnimeSaturn: Available links:",
+          $("a")
+            .map((_, el) => $(el).attr("href"))
+            .get(),
+        )
+        console.log(
+          "[v0] AnimeSaturn: Available buttons:",
+          $(".btn")
+            .map((_, el) => $(el).text().trim())
+            .get(),
+        )
         return null
       }
 
@@ -420,75 +433,39 @@ export class AnimeSaturnScraper extends BaseScraper {
 
       if (!videoSrc) {
         console.log("[v0] AnimeSaturn: No m3u8 found, looking for MP4 sources")
-        console.log("[v0] AnimeSaturn: HTML content sample:", streamHtml.substring(0, 2000))
 
-        // More comprehensive selectors for MP4 sources
         const mp4Selectors = [
-          "#video-player video source[src]",
-          "#video-player source[src]",
-          "video.afterglow source[src]",
-          "video.afterglow[src]",
-          "#myvideo source[src]",
-          "#myvideo[src]",
-          'video source[type="video/mp4"]',
+          "#video-player video source[src*='.mp4']",
+          "#video-player source[src*='.mp4']",
+          "video.afterglow source[src*='.mp4']",
+          "#myvideo source[src*='.mp4']",
+          'source[type="video/mp4"][src]',
           'video source[src*=".mp4"]',
           'source[src*=".mp4"]',
-          'video[src*=".mp4"]',
-          "video source",
+          "#video-player video source[src]",
+          "video.afterglow source[src]",
+          "#myvideo source[src]",
+          "video source[src]",
           "source[src]",
-          "video[src]",
         ]
 
         for (const selector of mp4Selectors) {
-          const elements = $stream(selector)
-          console.log(`[v0] AnimeSaturn: Trying selector "${selector}", found ${elements.length} elements`)
-
-          elements.each((_, el) => {
-            const src = $stream(el).attr("src")
-            const type = $stream(el).attr("type")
-            console.log(`[v0] AnimeSaturn: Element: ${el.tagName}, src: ${src}, type: ${type}`)
-
-            if (src && (src.includes(".mp4") || type === "video/mp4" || !type)) {
-              videoSrc = src
-              console.log("[v0] AnimeSaturn: Found MP4 source with selector:", selector, "->", src)
-              return false // break out of each loop
-            }
-          })
-
-          if (videoSrc) break
+          const element = $stream(selector).first()
+          const src = element.attr("src")
+          if (src) {
+            console.log("[v0] AnimeSaturn: Found MP4 source with selector:", selector, "->", src)
+            videoSrc = src
+            break
+          }
         }
       }
 
       if (!videoSrc) {
         console.log("[v0] AnimeSaturn: No video source found")
-        console.log(
-          "[v0] AnimeSaturn: All video elements:",
-          $stream("video")
-            .map((_, el) => {
-              const $el = $stream(el)
-              return {
-                tag: el.tagName,
-                id: $el.attr("id"),
-                class: $el.attr("class"),
-                src: $el.attr("src"),
-                innerHTML: $el.html()?.substring(0, 200),
-              }
-            })
-            .get(),
-        )
-        console.log(
-          "[v0] AnimeSaturn: All source elements:",
-          $stream("source")
-            .map((_, el) => {
-              const $el = $stream(el)
-              return {
-                tag: el.tagName,
-                src: $el.attr("src"),
-                type: $el.attr("type"),
-              }
-            })
-            .get(),
-        )
+        console.log("[v0] AnimeSaturn: Page title:", $stream("title").text())
+        console.log("[v0] AnimeSaturn: Video elements found:", $stream("video").length)
+        console.log("[v0] AnimeSaturn: Source elements found:", $stream("source").length)
+        console.log("[v0] AnimeSaturn: Script tags found:", $stream("script").length)
         return null
       }
 
