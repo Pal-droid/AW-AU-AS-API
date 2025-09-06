@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio"
 import stringSimilarity from "string-similarity"
+import { Buffer } from "buffer"
 
 export interface ScrapedAnime {
   title: string
@@ -311,24 +312,29 @@ export class AnimeSaturnScraper extends BaseScraper {
       const html = await res.text()
       const $ = cheerio.load(html)
 
-      let streamingLink = $('a:contains("Guarda lo streaming")').attr("href")
-      if (!streamingLink) {
-        // Try alternative selectors
-        streamingLink =
-          $('a[href*="/watch"]').attr("href") ||
-          $('.btn:contains("Guarda")').closest("a").attr("href") ||
-          $('a[href*="file="]').attr("href")
+      let streamingLink = null
+
+      // Try multiple selectors for the streaming button
+      const streamingSelectors = [
+        'a:contains("Guarda lo streaming")',
+        'a[href*="/watch"]',
+        '.btn:contains("Guarda")',
+        'a[href*="file="]',
+        '.btn-light:contains("streaming")',
+      ]
+
+      for (const selector of streamingSelectors) {
+        const element = $(selector)
+        streamingLink = element.attr("href") || element.closest("a").attr("href")
+        if (streamingLink) {
+          console.log("[v0] AnimeSaturn: Found streaming link with selector:", selector)
+          break
+        }
       }
 
       if (!streamingLink) {
         console.log("[v0] AnimeSaturn: No streaming link found on page")
-        console.log(
-          "[v0] AnimeSaturn: Available links:",
-          $("a")
-            .map((_, el) => $(el).attr("href"))
-            .get(),
-        )
-        console.log("[v0] AnimeSaturn: Script content sample:", $("script").first().html()?.substring(0, 500) + "...")
+        console.log("[v0] AnimeSaturn: Page content sample:", html.substring(0, 1000))
         return null
       }
 
@@ -350,57 +356,136 @@ export class AnimeSaturnScraper extends BaseScraper {
         const scriptContent = $stream(script).html() || ""
 
         // Look for jwplayer setup with m3u8 file
-        const jwplayerMatch = scriptContent.match(/jwplayer$$[^)]*$$\.setup$$\s*\{([^}]+)\}\s*$$/)
+        const jwplayerMatch = scriptContent.match(/jwplayer$$[^)]*$$\.setup\s*$$\s*\{([^}]+)\}\s*$$/)
         if (jwplayerMatch) {
           const setupContent = jwplayerMatch[1]
           const fileMatch = setupContent.match(/file:\s*["']([^"']+\.m3u8[^"']*)["']/)
           if (fileMatch) {
-            videoSrc = fileMatch[1]
-            console.log("[v0] AnimeSaturn: Found m3u8 stream in jwplayer:", videoSrc)
-            break
+            const m3u8Url = fileMatch[1]
+            console.log("[v0] AnimeSaturn: Found m3u8 stream in jwplayer:", m3u8Url)
+            return `data:text/html;base64,${Buffer.from(`
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+              </head>
+              <body style="margin:0;padding:0;background:#000;">
+                <video id="video" controls style="width:100%;height:100vh;"></video>
+                <script>
+                  const video = document.getElementById('video');
+                  const videoSrc = '${m3u8Url}';
+                  if (Hls.isSupported()) {
+                    const hls = new Hls();
+                    hls.loadSource(videoSrc);
+                    hls.attachMedia(video);
+                  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                    video.src = videoSrc;
+                  }
+                </script>
+              </body>
+              </html>
+            `).toString("base64")}`
           }
         }
 
         // Alternative pattern for m3u8 URLs in scripts
         const m3u8Match = scriptContent.match(/["']([^"']*\.m3u8[^"']*)["']/)
         if (m3u8Match) {
-          videoSrc = m3u8Match[1]
-          console.log("[v0] AnimeSaturn: Found m3u8 stream in script:", videoSrc)
-          break
+          const m3u8Url = m3u8Match[1]
+          console.log("[v0] AnimeSaturn: Found m3u8 stream in script:", m3u8Url)
+          return `data:text/html;base64,${Buffer.from(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+            </head>
+            <body style="margin:0;padding:0;background:#000;">
+              <video id="video" controls style="width:100%;height:100vh;"></video>
+              <script>
+                const video = document.getElementById('video');
+                const videoSrc = '${m3u8Url}';
+                if (Hls.isSupported()) {
+                  const hls = new Hls();
+                  hls.loadSource(videoSrc);
+                  hls.attachMedia(video);
+                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                  video.src = videoSrc;
+                }
+              </script>
+            </body>
+            </html>
+          `).toString("base64")}`
         }
       }
 
       if (!videoSrc) {
-        const selectors = [
-          "video source[src]",
-          "video[src]",
+        console.log("[v0] AnimeSaturn: No m3u8 found, looking for MP4 sources")
+        console.log("[v0] AnimeSaturn: HTML content sample:", streamHtml.substring(0, 2000))
+
+        // More comprehensive selectors for MP4 sources
+        const mp4Selectors = [
           "#video-player video source[src]",
-          "#video-player video[src]",
-          ".afterglow source[src]",
-          ".afterglow[src]",
-          "source[type='video/mp4'][src]",
-          "iframe[src]",
+          "#video-player source[src]",
+          "video.afterglow source[src]",
+          "video.afterglow[src]",
+          "#myvideo source[src]",
+          "#myvideo[src]",
+          'video source[type="video/mp4"]',
+          'video source[src*=".mp4"]',
+          'source[src*=".mp4"]',
+          'video[src*=".mp4"]',
+          "video source",
+          "source[src]",
+          "video[src]",
         ]
 
-        for (const selector of selectors) {
-          videoSrc = $stream(selector).attr("src")
-          if (videoSrc) {
-            console.log("[v0] AnimeSaturn: Found video source with selector:", selector)
-            break
-          }
+        for (const selector of mp4Selectors) {
+          const elements = $stream(selector)
+          console.log(`[v0] AnimeSaturn: Trying selector "${selector}", found ${elements.length} elements`)
+
+          elements.each((_, el) => {
+            const src = $stream(el).attr("src")
+            const type = $stream(el).attr("type")
+            console.log(`[v0] AnimeSaturn: Element: ${el.tagName}, src: ${src}, type: ${type}`)
+
+            if (src && (src.includes(".mp4") || type === "video/mp4" || !type)) {
+              videoSrc = src
+              console.log("[v0] AnimeSaturn: Found MP4 source with selector:", selector, "->", src)
+              return false // break out of each loop
+            }
+          })
+
+          if (videoSrc) break
         }
       }
 
       if (!videoSrc) {
         console.log("[v0] AnimeSaturn: No video source found")
         console.log(
-          "[v0] AnimeSaturn: Available video elements:",
-          $stream("video, source, iframe")
+          "[v0] AnimeSaturn: All video elements:",
+          $stream("video")
             .map((_, el) => {
-              const tag = el.tagName
-              const src = $stream(el).attr("src")
-              const type = $stream(el).attr("type")
-              return `${tag}${src ? ` src="${src}"` : ""}${type ? ` type="${type}"` : ""}`
+              const $el = $stream(el)
+              return {
+                tag: el.tagName,
+                id: $el.attr("id"),
+                class: $el.attr("class"),
+                src: $el.attr("src"),
+                innerHTML: $el.html()?.substring(0, 200),
+              }
+            })
+            .get(),
+        )
+        console.log(
+          "[v0] AnimeSaturn: All source elements:",
+          $stream("source")
+            .map((_, el) => {
+              const $el = $stream(el)
+              return {
+                tag: el.tagName,
+                src: $el.attr("src"),
+                type: $el.attr("type"),
+              }
             })
             .get(),
         )
