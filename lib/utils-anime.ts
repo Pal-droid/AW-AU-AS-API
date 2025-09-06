@@ -21,7 +21,18 @@ export function parseId(animeId: string): ParsedId {
   }
 
   let season = 0
-  if (parts.length > 0 && /^\d+$/.test(parts[parts.length - 1])) {
+
+  // Check for specific season patterns first
+  if (parts.includes("vs") && parts.includes("u") && parts.includes("20") && parts.includes("japan")) {
+    // "blue-lock-vs-u-20-japan" -> season 2
+    season = 2
+    parts = parts.filter((p) => !["vs", "u", "20", "japan"].includes(p))
+  } else if (parts.includes("episode") && parts.includes("nagi")) {
+    // "blue-lock-episode-nagi" -> special episode (season 0)
+    season = 0
+    parts = parts.filter((p) => !["episode", "nagi"].includes(p))
+  } else if (parts.length > 0 && /^\d+$/.test(parts[parts.length - 1])) {
+    // Standard numeric season at the end
     season = Number.parseInt(parts[parts.length - 1])
     parts = parts.slice(0, -1)
   }
@@ -38,8 +49,22 @@ export function shouldMatch(awId: string, asId: string, awTitle?: string, asTitl
     const awParsed = parseId(awId)
     const asParsed = parseId(asId)
 
-    if (awParsed.base === asParsed.base && awParsed.season === asParsed.season && awParsed.lang === asParsed.lang) {
-      return true
+    if (awParsed.base === asParsed.base) {
+      // Same base anime
+      if (awParsed.season === asParsed.season && awParsed.lang === asParsed.lang) {
+        // Exact match
+        console.log(`[v0] Exact ID match: ${awId} <-> ${asId}`)
+        return true
+      }
+
+      // Same base but different season/lang - use title similarity to confirm
+      if (awTitle && asTitle) {
+        const normalizedAW = normalizeTitle(awTitle)
+        const normalizedAS = normalizeTitle(asTitle)
+        const similarity = stringSimilarity.compareTwoStrings(normalizedAW, normalizedAS)
+        console.log(`[v0] Same base, checking title similarity: "${normalizedAW}" vs "${normalizedAS}" = ${similarity}`)
+        return similarity >= 0.6 // Lower threshold for same base anime
+      }
     }
   } catch (error) {
     console.log(`[v0] ID parsing failed: ${error}`)
@@ -51,7 +76,7 @@ export function shouldMatch(awId: string, asId: string, awTitle?: string, asTitl
     const normalizedAS = normalizeTitle(asTitle)
     const similarity = stringSimilarity.compareTwoStrings(normalizedAW, normalizedAS)
     console.log(`[v0] Title similarity between "${normalizedAW}" and "${normalizedAS}": ${similarity}`)
-    return similarity >= 0.75 // Higher threshold for more accurate matches
+    return similarity >= 0.75 // Higher threshold for title-only matches
   }
 
   return false
@@ -61,6 +86,8 @@ export function normalizeTitle(title: string): string {
   return title
     .toLowerCase()
     .replace(/$$ita$$/g, "") // remove (ITA) tag
+    .replace(/vs\.?\s*u-?20\s*japan/g, "2") // normalize "vs. U-20 Japan" to "2"
+    .replace(/:\s*episode\s*nagi/g, "nagi") // normalize ": Episode Nagi" to "nagi"
     .replace(/[^\w\s]/g, " ") // replace all non-alphanumeric characters with space
     .replace(/\s+/g, " ") // collapse multiple spaces
     .trim()
