@@ -1,0 +1,345 @@
+import * as cheerio from "cheerio"
+import stringSimilarity from "string-similarity"
+
+export interface ScrapedAnime {
+  title: string
+  url: string
+  id: string
+  poster?: string
+  description?: string
+  source: string
+  sources?: { name: string; url: string; id: string }[]
+}
+
+export interface ScrapedEpisode {
+  episode_number: number
+  id: string
+  url: string
+}
+
+export interface ScrapedStream {
+  stream_url?: string
+  embed?: string
+  provider?: string
+}
+
+/** -------------------------
+ * Base Scraper
+ * ------------------------- */
+class BaseScraper {
+  protected timeout = 30000
+  protected headers = {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+  }
+
+  protected async fetchWithTimeout(url: string): Promise<Response> {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout)
+
+    try {
+      const fetchOptions: RequestInit = { headers: this.headers, signal: controller.signal }
+
+      if (typeof process !== "undefined" && process.env.NODE_ENV) {
+        const https = await import("https")
+        const agent = new https.Agent({ rejectUnauthorized: false })
+        // @ts-ignore
+        fetchOptions.agent = agent
+      }
+
+      const response = await fetch(url, fetchOptions)
+      clearTimeout(timeoutId)
+      return response
+    } catch (error) {
+      clearTimeout(timeoutId)
+      throw error
+    }
+  }
+}
+
+/** -------------------------
+ * Normalization & Matching
+ * ------------------------- */
+export function normalizeTitle(title: string): string {
+  // A more robust normalization function
+  return title
+    .toLowerCase()
+    .replace(/\(ita\)/g, "") // remove (ITA) tag
+    .replace(/[^\w\s]/g, " ") // replace all non-alphanumeric characters with space
+    .replace(/\s+/g, " ") // collapse multiple spaces
+    .trim()
+}
+
+function findMatchingKey(map: Map<string, ScrapedAnime>, title: string): string | undefined {
+  const normalized = normalizeTitle(title)
+  let bestMatch: string | undefined
+  let bestScore = 0
+
+  // The similarity score of 0.85 was a bit too high and brittle.
+  // We'll use a lower, more flexible score and find the best match.
+  const threshold = 0.7
+
+  for (const key of map.keys()) {
+    const score = stringSimilarity.compareTwoStrings(normalized, key)
+    if (score > threshold && score > bestScore) {
+      bestScore = score
+      bestMatch = key
+    }
+  }
+
+  return bestMatch
+}
+
+/** -------------------------
+ * Aggregation
+ * ------------------------- */
+export function aggregateAnime(results: ScrapedAnime[][]): ScrapedAnime[] {
+  const map = new Map<string, ScrapedAnime>()
+
+  for (const sourceResults of results) {
+    for (const anime of sourceResults) {
+      const normalizedTitle = normalizeTitle(anime.title)
+      const matchKey = findMatchingKey(map, normalizedTitle)
+
+      if (matchKey) {
+        const existing = map.get(matchKey)!
+        // Merge missing data
+        if (!existing.poster && anime.poster) existing.poster = anime.poster
+        if (!existing.description && anime.description) existing.description = anime.description
+
+        // Aggregate sources
+        if (!existing.sources) existing.sources = []
+        for (const src of anime.sources ?? [{ name: anime.source, url: anime.url, id: anime.id }]) {
+          if (!existing.sources.find(s => s.id === src.id)) {
+            existing.sources.push(src)
+          }
+        }
+      } else {
+        // Add new entry
+        map.set(normalizedTitle, { ...anime, sources: anime.sources ?? [{ name: anime.source, url: anime.url, id: anime.id }] })
+      }
+    }
+  }
+  return Array.from(map.values())
+}
+
+export function aggregateEpisodes(allEpisodes: ScrapedEpisode[][]): ScrapedEpisode[] {
+  const map = new Map<number, ScrapedEpisode>()
+  for (const episodes of allEpisodes) {
+    for (const ep of episodes) {
+      if (!map.has(ep.episode_number)) map.set(ep.episode_number, ep)
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => a.episode_number - b.episode_number)
+}
+
+/** -------------------------
+ * AnimeWorld Scraper
+ * ------------------------- */
+export class AnimeWorldScraper extends BaseScraper {
+  private readonly BASE_URL = "https://www.animeworld.ac"
+
+  async search(query: string): Promise<ScrapedAnime[]> {
+    try {
+      const url = `${this.BASE_URL}/search?keyword=${encodeURIComponent(query)}`
+      const res = await this.fetchWithTimeout(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const html = await res.text()
+      const $ = cheerio.load(html)
+      const results: ScrapedAnime[] = []
+
+      $(".film-list .item").each((_, el) => {
+        const nameEl = $(el).find("a.name")
+        if (!nameEl.length) return
+        const relativeUrl = nameEl.attr("href")
+        const title = nameEl.attr("data-jtitle") || nameEl.text().trim()
+        if (!relativeUrl) return
+
+        const fullUrl = new URL(relativeUrl, this.BASE_URL).href
+
+        let animeId: string | null = null
+        const pathParts = relativeUrl.replace(/^\/+|\/+$/g, "").split("/")
+        if (pathParts.length >= 2 && pathParts[0] === "play") animeId = pathParts[1]
+        else animeId = pathParts[pathParts.length - 1]
+
+        const imgEl = $(el).find("img")
+        let posterUrl = imgEl.attr("src")
+        if (posterUrl && !posterUrl.startsWith("http")) posterUrl = new URL(posterUrl, this.BASE_URL).href
+
+        if (animeId) results.push({ title, url: fullUrl, id: animeId, poster: posterUrl, source: "AnimeWorld" })
+      })
+
+      return results
+    } catch (err) {
+      console.error("AnimeWorld search error:", err)
+      return []
+    }
+  }
+
+  async getEpisodes(animeId: string): Promise<ScrapedEpisode[]> {
+    try {
+      const url = `${this.BASE_URL}/play/${animeId}`
+      const res = await this.fetchWithTimeout(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const html = await res.text()
+      const $ = cheerio.load(html)
+      const episodes: ScrapedEpisode[] = []
+
+      $("div.server ul.episodes li.episode a").each((_, el) => {
+        const $el = $(el)
+        const num = parseInt($el.attr("data-episode-num") || "")
+        const epId = $el.attr("data-id")
+        const epUrl = $el.attr("href")
+        if (num && epId && epUrl) episodes.push({ episode_number: num, id: `${animeId}/${epId}`, url: new URL(epUrl, this.BASE_URL).href })
+      })
+
+      return episodes.sort((a, b) => a.episode_number - b.episode_number)
+    } catch (err) {
+      console.error("AnimeWorld episodes error:", err)
+      return []
+    }
+  }
+
+  async getStreamUrl(episodeId: string): Promise<string | null> {
+    try {
+      const url = episodeId.includes("/") ? `${this.BASE_URL}/play/${episodeId}` : `${this.BASE_URL}/play/episode/${episodeId}`
+      const res = await this.fetchWithTimeout(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const html = await res.text()
+      const $ = cheerio.load(html)
+      return $("#downloadLink").attr("href") || $("#alternativeDownloadLink").attr("href") || $("video, iframe").first().attr("src") || null
+    } catch (err) {
+      console.error("AnimeWorld stream error:", err)
+      return null
+    }
+  }
+}
+
+/** -------------------------
+ * AnimeSaturn Scraper
+ * ------------------------- */
+export class AnimeSaturnScraper extends BaseScraper {
+  private readonly BASE_URL = "https://www.animesaturn.cx"
+
+  async search(query: string): Promise<ScrapedAnime[]> {
+    try {
+      const url = `${this.BASE_URL}/animelist?search=${encodeURIComponent(query)}`
+      const res = await this.fetchWithTimeout(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const html = await res.text()
+      const results: ScrapedAnime[] = []
+
+      const $ = cheerio.load(html)
+      $(".list-group-item").each((_, el) => {
+        const itemHtml = $(el).html()
+        const titleLink = $(el).find("h3 a.badge")
+        const animeUrl = titleLink.attr("href")
+        const title = titleLink.text().trim()
+        
+        if (!animeUrl) return
+
+        let animeId: string | null = null
+        try { animeId = new URL(animeUrl).pathname.split("/").filter(Boolean)[1] } catch {}
+        if (!animeId) return
+
+        const posterMatch = $(el).find(".copertina-archivio").attr("src")
+        let poster = posterMatch ? posterMatch : undefined
+        if (poster && !poster.startsWith("http")) poster = new URL(poster, this.BASE_URL).href
+
+        const description = $(el).find(".trama-anime-archivio").text().trim() || undefined
+
+        results.push({ title, url: animeUrl, id: animeId, poster, description, source: "AnimeSaturn" })
+      })
+
+      return results
+    } catch (err) {
+      console.error("AnimeSaturn search error:", err)
+      return []
+    }
+  }
+
+  async getEpisodes(animeId: string): Promise<ScrapedEpisode[]> {
+    try {
+      const url = `${this.BASE_URL}/anime/${animeId}`
+      const res = await this.fetchWithTimeout(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const html = await res.text()
+      const $ = cheerio.load(html)
+      const episodes: ScrapedEpisode[] = []
+
+      $("div.episodi-link-button > a").each((_, el) => {
+        const epUrl = $(el).attr("href")
+        const epText = $(el).text().trim()
+        const match = epText.match(/Episodio\s+(\d+)/i)
+        if (!epUrl || !match) return
+        const num = parseInt(match[1])
+        const epId = epUrl.replace(/\/+$/, "").split("/").pop()!
+        episodes.push({ episode_number: num, id: epId, url: epUrl.startsWith("http") ? epUrl : new URL(epUrl, this.BASE_URL).href })
+      })
+
+      return episodes.sort((a, b) => a.episode_number - b.episode_number)
+    } catch (err) {
+      console.error("AnimeSaturn episodes error:", err)
+      return []
+    }
+  }
+
+  async getStreamUrl(episodeId: string): Promise<string | null> {
+    try {
+      const url = `${this.BASE_URL}/stream/${episodeId}`
+      const res = await this.fetchWithTimeout(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const html = await res.text()
+      const $ = cheerio.load(html)
+      return $("iframe, video").first().attr("src") || null
+    } catch (err) {
+      console.error("AnimeSaturn stream error:", err)
+      return null
+    }
+  }
+}
+
+/** -------------------------
+ * Aggregated Search & Episodes
+ * ------------------------- */
+export async function searchAnime(query: string): Promise<ScrapedAnime[]> {
+  const awScraper = new AnimeWorldScraper()
+  const asScraper = new AnimeSaturnScraper()
+
+  const [awResults, asResults] = await Promise.all([awScraper.search(query), asScraper.search(query)])
+  return aggregateAnime([awResults, asResults])
+}
+
+export async function getAllEpisodes(anime: ScrapedAnime): Promise<ScrapedEpisode[]> {
+  const episodesList: ScrapedEpisode[][] = []
+
+  for (const src of anime.sources ?? []) {
+    let eps: ScrapedEpisode[] = []
+    if (src.name === "AnimeWorld") {
+      const scraper = new AnimeWorldScraper()
+      eps = await scraper.getEpisodes(src.id)
+    } else if (src.name === "AnimeSaturn") {
+      const scraper = new AnimeSaturnScraper()
+      eps = await scraper.getEpisodes(src.id)
+    }
+    episodesList.push(eps)
+  }
+
+  return aggregateEpisodes(episodesList)
+}
+
+/** -------------------------
+ * Example Usage
+ * ------------------------- */
+async function example() {
+  const results = await searchAnime("Naruto Shippuden")
+  console.log("Merged search results:", results)
+
+  if (results.length > 0) {
+    const episodes = await getAllEpisodes(results[0])
+    console.log(`Episodes for ${results[0].title}:`, episodes)
+  }
+}
+
+// Uncomment to test
+// example()
