@@ -2,7 +2,24 @@ import { type NextRequest, NextResponse } from "next/server"
 import { AnimeWorldScraper, AnimeSaturnScraper } from "@/lib/scrapers"
 import type { EpisodeResult } from "@/lib/models"
 
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  })
+}
+
 export async function GET(request: NextRequest) {
+  const headers = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  }
+
   const searchParams = request.nextUrl.searchParams
   const AW = searchParams.get("AW")
   const AS = searchParams.get("AS")
@@ -11,7 +28,7 @@ export async function GET(request: NextRequest) {
 
   if (!AW && !AS) {
     console.log("[v0] No IDs provided, returning error")
-    return NextResponse.json({ error: "At least one source ID (AW or AS) must be provided" }, { status: 400 })
+    return NextResponse.json({ error: "At least one source ID (AW or AS) must be provided" }, { status: 400, headers })
   }
 
   try {
@@ -48,6 +65,8 @@ export async function GET(request: NextRequest) {
           id: ep.id,
         }
       }
+    } else if (AW && results[0].status === "rejected") {
+      console.log(`[v0] AnimeWorld episodes failed:`, results[0].reason)
     }
 
     if (AS && results.length > (AW ? 1 : 0) && results[AW ? 1 : 0].status === "fulfilled") {
@@ -66,6 +85,8 @@ export async function GET(request: NextRequest) {
           id: ep.id,
         }
       }
+    } else if (AS && results[AW ? 1 : 0].status === "rejected") {
+      console.log(`[v0] AnimeSaturn episodes failed:`, results[AW ? 1 : 0].reason)
     }
 
     console.log(`[v0] All episodes before filling missing sources:`, allEpisodes)
@@ -88,9 +109,9 @@ export async function GET(request: NextRequest) {
     console.log(`[v0] Final sorted episodes:`, sortedEpisodes)
     console.log(`[v0] Final episodes count: ${sortedEpisodes.length}`)
 
-    return NextResponse.json(sortedEpisodes)
+    return NextResponse.json(sortedEpisodes, { headers })
   } catch (error) {
     console.log(`[v0] Exception in episodes endpoint: ${error}`)
-    return NextResponse.json({ error: `Failed to get episodes: ${error}` }, { status: 500 })
+    return NextResponse.json({ error: `Failed to get episodes: ${error}` }, { status: 500, headers })
   }
 }
