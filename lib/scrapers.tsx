@@ -1,6 +1,5 @@
 import * as cheerio from "cheerio"
 import stringSimilarity from "string-similarity"
-import { Buffer } from "buffer"
 
 export interface ScrapedAnime {
   title: string
@@ -364,98 +363,77 @@ export class AnimeSaturnScraper extends BaseScraper {
 
       let videoSrc = null
 
-      const scriptTags = $stream("script").toArray()
-      for (const script of scriptTags) {
-        const scriptContent = $stream(script).html() || ""
+      console.log("[v0] AnimeSaturn: Looking for MP4 sources first")
+      const mp4Selectors = [
+        "#video-player video source[src*='.mp4']",
+        "#video-player source[src*='.mp4']",
+        "video.afterglow source[src*='.mp4']",
+        "#myvideo source[src*='.mp4']",
+        'source[type="video/mp4"][src]',
+        'video source[src*=".mp4"]',
+        'source[src*=".mp4"]',
+        "#video-player video source[src]",
+        "video.afterglow source[src]",
+        "#myvideo source[src]",
+        "video source[src]",
+        "source[src]",
+      ]
 
-        // Look for jwplayer setup with m3u8 file
-        const jwplayerMatch = scriptContent.match(/jwplayer$$[^)]*$$\.setup\s*$$\s*\{([^}]+)\}\s*$$/)
-        if (jwplayerMatch) {
-          const setupContent = jwplayerMatch[1]
-          const fileMatch = setupContent.match(/file:\s*["']([^"']+\.m3u8[^"']*)["']/)
-          if (fileMatch) {
-            const m3u8Url = fileMatch[1]
-            console.log("[v0] AnimeSaturn: Found m3u8 stream in jwplayer:", m3u8Url)
-            return `data:text/html;base64,${Buffer.from(`
-              <!DOCTYPE html>
-              <html>
-              <head>
-                <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-              </head>
-              <body style="margin:0;padding:0;background:#000;">
-                <video id="video" controls style="width:100%;height:100vh;"></video>
-                <script>
-                  const video = document.getElementById('video');
-                  const videoSrc = '${m3u8Url}';
-                  if (Hls.isSupported()) {
-                    const hls = new Hls();
-                    hls.loadSource(videoSrc);
-                    hls.attachMedia(video);
-                  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                    video.src = videoSrc;
-                  }
-                </script>
-              </body>
-              </html>
-            `).toString("base64")}`
-          }
-        }
-
-        // Alternative pattern for m3u8 URLs in scripts
-        const m3u8Match = scriptContent.match(/["']([^"']*\.m3u8[^"']*)["']/)
-        if (m3u8Match) {
-          const m3u8Url = m3u8Match[1]
-          console.log("[v0] AnimeSaturn: Found m3u8 stream in script:", m3u8Url)
-          return `data:text/html;base64,${Buffer.from(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-            </head>
-            <body style="margin:0;padding:0;background:#000;">
-              <video id="video" controls style="width:100%;height:100vh;"></video>
-              <script>
-                const video = document.getElementById('video');
-                const videoSrc = '${m3u8Url}';
-                if (Hls.isSupported()) {
-                  const hls = new Hls();
-                  hls.loadSource(videoSrc);
-                  hls.attachMedia(video);
-                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                  video.src = videoSrc;
-                }
-              </script>
-            </body>
-            </html>
-          `).toString("base64")}`
+      for (const selector of mp4Selectors) {
+        const element = $stream(selector).first()
+        const src = element.attr("src")
+        if (src && src.includes(".mp4")) {
+          console.log("[v0] AnimeSaturn: Found MP4 source with selector:", selector, "->", src)
+          videoSrc = src
+          break
         }
       }
 
       if (!videoSrc) {
-        console.log("[v0] AnimeSaturn: No m3u8 found, looking for MP4 sources")
+        console.log("[v0] AnimeSaturn: No MP4 found, trying alternative player")
 
-        const mp4Selectors = [
-          "#video-player video source[src*='.mp4']",
-          "#video-player source[src*='.mp4']",
-          "video.afterglow source[src*='.mp4']",
-          "#myvideo source[src*='.mp4']",
-          'source[type="video/mp4"][src]',
-          'video source[src*=".mp4"]',
-          'source[src*=".mp4"]',
-          "#video-player video source[src]",
-          "video.afterglow source[src]",
-          "#myvideo source[src]",
-          "video source[src]",
-          "source[src]",
-        ]
+        // First try to find alternative player button
+        const altPlayerDiv = $stream("div#wtf.button")
+        if (altPlayerDiv.length > 0) {
+          const altPlayerLink = altPlayerDiv.find("a").attr("href")
+          if (altPlayerLink) {
+            console.log("[v0] AnimeSaturn: Found alternative player link:", altPlayerLink)
 
-        for (const selector of mp4Selectors) {
-          const element = $stream(selector).first()
-          const src = element.attr("src")
-          if (src) {
-            console.log("[v0] AnimeSaturn: Found MP4 source with selector:", selector, "->", src)
-            videoSrc = src
-            break
+            // Follow the alternative player link
+            const altPlayerUrl = altPlayerLink.startsWith("http")
+              ? altPlayerLink
+              : new URL(altPlayerLink, this.BASE_URL).href
+
+            try {
+              const altRes = await this.fetchWithTimeout(altPlayerUrl)
+              if (altRes.ok) {
+                const altHtml = await altRes.text()
+                const $alt = cheerio.load(altHtml)
+
+                // Look for video with id="player-v" and m3u8 source
+                const playerVideo = $alt("video#player-v")
+                if (playerVideo.length > 0) {
+                  const m3u8Source = playerVideo.find('source[src*=".m3u8"]').attr("src")
+                  if (m3u8Source) {
+                    console.log("[v0] AnimeSaturn: Found m3u8 URL in alternative player:", m3u8Source)
+                    return m3u8Source.startsWith("http") ? m3u8Source : new URL(m3u8Source, this.BASE_URL).href
+                  }
+                }
+              }
+            } catch (altError) {
+              console.log("[v0] AnimeSaturn: Error fetching alternative player:", altError)
+            }
+          }
+        }
+
+        // If alternative player didn't work, try direct m3u8 search in current page
+        console.log("[v0] AnimeSaturn: Trying direct m3u8 search")
+        const playerVideo = $stream("video#player-v")
+        if (playerVideo.length > 0) {
+          const m3u8Source = playerVideo.find('source[src*=".m3u8"]').attr("src")
+          if (m3u8Source) {
+            console.log("[v0] AnimeSaturn: Found m3u8 URL in player-v:", m3u8Source)
+            return m3u8Source.startsWith("http") ? m3u8Source : new URL(m3u8Source, this.BASE_URL).href
           }
         }
       }
