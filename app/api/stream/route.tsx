@@ -77,9 +77,8 @@ export async function GET(request: NextRequest) {
         const url = typeof data === "string" ? data : data.stream_url
         const embedHtml = typeof data === "object" ? data.embed : undefined
 
-        // Use the embed from AnimeSaturn scraper if available
         let finalEmbed = embedHtml
-        if (!finalEmbed && url) {
+        if (!finalEmbed && url && !url.includes(".m3u8")) {
           const proxyUrl = `https://animesaturn-proxy.onrender.com/proxy?url=${encodeURIComponent(url)}`
           finalEmbed = `<video 
     src="${proxyUrl}" 
@@ -94,7 +93,7 @@ export async function GET(request: NextRequest) {
         streamResult.AnimeSaturn = {
           available: true,
           stream_url: url,
-          embed: finalEmbed,
+          embed: finalEmbed, // This will be undefined for m3u8 URLs
         }
       }
     } else if (AS && results[AW ? 1 : 0].status === "rejected") {
