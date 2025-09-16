@@ -242,7 +242,7 @@ export class AnimeSaturnScraper extends BaseScraper {
         if (!animeUrl || !title) return
 
         const urlPath = new URL(animeUrl, this.BASE_URL).pathname
-        const animeId = urlPath.split("/").filter(Boolean).pop() // Get last segment after /anime/
+        const animeId = urlPath.replace("/anime/", "")
 
         let poster = $(el).find("img.copertina-archivio").attr("src")
         if (poster && !poster.startsWith("http")) poster = new URL(poster, this.BASE_URL).href
@@ -284,7 +284,7 @@ export class AnimeSaturnScraper extends BaseScraper {
         if (!epUrl || !match) return
 
         const num = Number.parseInt(match[1])
-        const epId = epUrl.replace(/\/+$/, "").split("/").pop()!
+        const epId = epUrl.replace("/ep/", "").replace(this.BASE_URL, "")
 
         episodes.push({
           episode_number: num,
@@ -302,7 +302,7 @@ export class AnimeSaturnScraper extends BaseScraper {
 
   async getStreamUrl(episodeId: string): Promise<ScrapedStream | null> {
     try {
-      const episodeUrl = `${this.BASE_URL}/ep/${episodeId}`
+      const episodeUrl = episodeId.startsWith("http") ? episodeId : `${this.BASE_URL}/ep/${episodeId}`
       const res = await this.fetchWithTimeout(episodeUrl)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const html = await res.text()
@@ -334,9 +334,8 @@ export class AnimeSaturnScraper extends BaseScraper {
         .map((_, el) => $stream(el).html() || "")
         .get()
       for (const script of scripts) {
-        // Look for jwplayer setup with file parameter
         const jwPlayerMatch = script.match(
-          /jwplayer$$['"]player_hls['"]$$\.setup\(\{[^}]*file:\s*["']([^"']+\.m3u8)["']/,
+          /jwplayer\s*$$\s*['"']player_hls['"]\s*$$\s*\.setup\s*\(\s*\{[^}]*file:\s*["']([^"']+\.m3u8)["']/,
         )
         if (jwPlayerMatch) {
           const m3u8Url = jwPlayerMatch[1]
@@ -376,7 +375,6 @@ export class AnimeSaturnScraper extends BaseScraper {
           }
         }
 
-        // Fallback for simpler file: pattern
         const simpleMatch = script.match(/file:\s*["']([^"']+\.m3u8)["']/)
         if (simpleMatch) {
           const m3u8Url = simpleMatch[1]
