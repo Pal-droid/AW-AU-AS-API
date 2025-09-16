@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
 
     const streamResult: StreamResult = {
       AnimeWorld: { available: false, stream_url: undefined, embed: undefined },
-      AnimeSaturn: { available: false, stream_url: undefined, embed: undefined },
+      AnimeSaturn: { available: false, stream_url: undefined, embed: undefined, provider: undefined },
     }
 
     // Process AnimeWorld result
@@ -76,6 +76,7 @@ export async function GET(request: NextRequest) {
       if (data) {
         const url = typeof data === "string" ? data : data.stream_url
         const embedHtml = typeof data === "object" ? data.embed : undefined
+        const provider = typeof data === "object" ? data.provider : undefined
 
         let finalEmbed = embedHtml
         if (!finalEmbed && url && !url.includes(".m3u8")) {
@@ -93,7 +94,8 @@ export async function GET(request: NextRequest) {
         streamResult.AnimeSaturn = {
           available: true,
           stream_url: url,
-          embed: finalEmbed, // This will be undefined for m3u8 URLs
+          embed: finalEmbed, // This will be the proper JWPlayer embed for HLS or video tag for MP4
+          provider: provider,
         }
       }
     } else if (AS && results[AW ? 1 : 0].status === "rejected") {
