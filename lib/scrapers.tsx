@@ -61,12 +61,11 @@ class BaseScraper {
  * Normalization & Matching
  * ------------------------- */
 export function normalizeTitle(title: string): string {
-  // A more robust normalization function
   return title
     .toLowerCase()
-    .replace(/$$ita$$/g, "") // remove (ITA) tag
-    .replace(/[^\w\s]/g, " ") // replace all non-alphanumeric characters with space
-    .replace(/\s+/g, " ") // collapse multiple spaces
+    .replace(/ita/gi, "") // remove (ITA)
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -74,9 +73,6 @@ function findMatchingKey(map: Map<string, ScrapedAnime>, title: string): string 
   const normalized = normalizeTitle(title);
   let bestMatch: string | undefined;
   let bestScore = 0;
-
-  // The similarity score of 0.85 was a bit too high and brittle.
-  // We'll use a lower, more flexible score and find the best match.
   const threshold = 0.7;
 
   for (const key of map.keys()) {
@@ -86,7 +82,6 @@ function findMatchingKey(map: Map<string, ScrapedAnime>, title: string): string 
       bestMatch = key;
     }
   }
-
   return bestMatch;
 }
 
@@ -103,11 +98,9 @@ export function aggregateAnime(results: ScrapedAnime[][]): ScrapedAnime[] {
 
       if (matchKey) {
         const existing = map.get(matchKey)!;
-        // Merge missing data
         if (!existing.poster && anime.poster) existing.poster = anime.poster;
         if (!existing.description && anime.description) existing.description = anime.description;
 
-        // Aggregate sources
         if (!existing.sources) existing.sources = [];
         for (const src of anime.sources ?? [{ name: anime.source, url: anime.url, id: anime.id }]) {
           if (!existing.sources.find((s) => s.id === src.id)) {
@@ -115,7 +108,6 @@ export function aggregateAnime(results: ScrapedAnime[][]): ScrapedAnime[] {
           }
         }
       } else {
-        // Add new entry
         map.set(normalizedTitle, {
           ...anime,
           sources: anime.sources ?? [{ name: anime.source, url: anime.url, id: anime.id }],
@@ -169,7 +161,8 @@ export class AnimeWorldScraper extends BaseScraper {
         let posterUrl = imgEl.attr("src");
         if (posterUrl && !posterUrl.startsWith("http")) posterUrl = new URL(posterUrl, this.BASE_URL).href;
 
-        if (animeId) results.push({ title, url: fullUrl, id: animeId, poster: posterUrl, source: "AnimeWorld" });
+        if (animeId)
+          results.push({ title, url: fullUrl, id: animeId, poster: posterUrl, source: "AnimeWorld" });
       });
 
       return results;
@@ -238,43 +231,25 @@ export class AnimeSaturnScraper extends BaseScraper {
     try {
       const url = `${this.BASE_URL}/animelist?search=${encodeURIComponent(query)}`;
       const res = await this.fetchWithTimeout(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const html = await res.text();
+      const $ = cheerio.load(html);
       const results: ScrapedAnime[] = [];
 
-      const $ = cheerio.load(html);
       $(".list-group-item").each((_, el) => {
         const titleLink = $(el).find("h3 a.badge-archivio");
         const animeUrl = titleLink.attr("href");
         const title = titleLink.text().trim();
+        if (!animeUrl || !title) return;
 
-        if (!animeUrl || !title) {
-          console.warn("Skipping item: Missing URL or title", $(el).html());
-          return;
-        }
-
-        let animeId: string | null = null;
-        try {
-          animeId = new URL(animeUrl, this.BASE_URL).pathname.split("/").filter(Boolean)[1];
-        } catch (e) {
-          console.warn(`Failed to parse anime ID from URL: ${animeUrl}`, e);
-          return;
-        }
-        if (!animeId) {
-          console.warn(`No anime ID found for URL: ${animeUrl}`);
-          return;
-        }
-
+        const animeId = new URL(animeUrl, this.BASE_URL).pathname.split("/").filter(Boolean)[1];
         let poster = $(el).find(".copertina-archivio").attr("src");
-        if (poster && !poster.startsWith("http")) {
-          poster = new URL(poster, this.BASE_URL).href;
-        }
-
+        if (poster && !poster.startsWith("http")) poster = new URL(poster, this.BASE_URL).href;
         const description = $(el).find(".trama-anime-archivio").text().trim() || undefined;
 
         results.push({
           title,
-          url: animeUrl,
+          url: animeUrl.startsWith("http") ? animeUrl : new URL(animeUrl, this.BASE_URL).href,
           id: animeId,
           poster,
           description,
@@ -293,12 +268,12 @@ export class AnimeSaturnScraper extends BaseScraper {
     try {
       const url = `${this.BASE_URL}/anime/${animeId}`;
       const res = await this.fetchWithTimeout(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const html = await res.text();
       const $ = cheerio.load(html);
       const episodes: ScrapedEpisode[] = [];
 
-      $("div.episodi-link-button > a").each((_, el) => {
+      $(".episodi-link-button a").each((_, el) => {
         const epUrl = $(el).attr("href");
         const epText = $(el).text().trim();
         const match = epText.match(/Episodio\s+(\d+)/i);
@@ -322,150 +297,32 @@ export class AnimeSaturnScraper extends BaseScraper {
   async getStreamUrl(episodeId: string): Promise<string | null> {
     try {
       const episodeUrl = `${this.BASE_URL}/ep/${episodeId}`;
-      console.log("[v0] AnimeSaturn: Fetching episode page:", episodeUrl);
-
       const res = await this.fetchWithTimeout(episodeUrl);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const html = await res.text();
       const $ = cheerio.load(html);
 
-      let streamingLink = null;
+      const watchLink = $('a[href*="/watch"]').attr("href");
+      if (!watchLink) return null;
+      const fullWatchUrl = watchLink.startsWith("http") ? watchLink : new URL(watchLink, this.BASE_URL).href;
 
-      // Try multiple selectors for the streaming button
-      const streamingSelectors = [
-        'a:contains("Guarda lo streaming")',
-        'a[href*="/watch"]',
-        '.btn:contains("Guarda")',
-        'a[href*="file="]',
-        '.btn-light:contains("streaming")',
-      ];
-
-      for (const selector of streamingSelectors) {
-        const element = $(selector);
-        streamingLink = element.attr("href") || element.closest("a").attr("href");
-        if (streamingLink) {
-          console.log("[v0] AnimeSaturn: Found streaming link with selector:", selector);
-          break;
-        }
-      }
-
-      if (!streamingLink) {
-        console.log("[v0] AnimeSaturn: No streaming link found on page");
-        console.log(
-          "[v0] AnimeSaturn: Available links:",
-          $("a")
-            .map((_, el) => $(el).attr("href"))
-            .get()
-        );
-        console.log(
-          "[v0] AnimeSaturn: Available buttons:",
-          $(".btn")
-            .map((_, el) => $(el).text().trim())
-            .get()
-        );
-        return null;
-      }
-
-      const fullStreamingUrl = streamingLink.startsWith("http")
-        ? streamingLink
-        : new URL(streamingLink, this.BASE_URL).href;
-      console.log("[v0] AnimeSaturn: Following streaming link:", fullStreamingUrl);
-
-      // Follow the streaming link to get the actual video page
-      const streamRes = await this.fetchWithTimeout(fullStreamingUrl);
+      const streamRes = await this.fetchWithTimeout(fullWatchUrl);
       if (!streamRes.ok) throw new Error(`HTTP ${streamRes.status}`);
       const streamHtml = await streamRes.text();
       const $stream = cheerio.load(streamHtml);
 
-      let videoSrc = null;
+      const mp4 = $stream("video source[src*='.mp4']").attr("src");
+      if (mp4) return mp4.startsWith("http") ? mp4 : new URL(mp4, this.BASE_URL).href;
 
-      console.log("[v0] AnimeSaturn: Looking for MP4 sources first");
-      const mp4Selectors = [
-        "#video-player video source[src*='.mp4']",
-        "#video-player source[src*='.mp4']",
-        "video.afterglow source[src*='.mp4']",
-        "#myvideo source[src*='.mp4']",
-        'source[type="video/mp4"][src]',
-        'video source[src*=".mp4"]',
-        'source[src*=".mp4"]',
-        "#video-player video source[src]",
-        "video.afterglow source[src]",
-        "#myvideo source[src]",
-        "video source[src]",
-        "source[src]",
-      ];
-
-      for (const selector of mp4Selectors) {
-        const element = $stream(selector).first();
-        const src = element.attr("src");
-        if (src && src.includes(".mp4")) {
-          console.log("[v0] AnimeSaturn: Found MP4 source with selector:", selector, "->", src);
-          videoSrc = src;
-          break;
+      const scripts = $stream("script").map((_, el) => $stream(el).html() || "").get();
+      for (const script of scripts) {
+        const match = script.match(/file:\s*"([^"]+\.m3u8)"/);
+        if (match) {
+          const m3u8 = match[1];
+          return m3u8.startsWith("http") ? m3u8 : new URL(m3u8, this.BASE_URL).href;
         }
       }
-
-      if (!videoSrc) {
-        console.log("[v0] AnimeSaturn: No MP4 found, trying alternative player");
-
-        // First try to find alternative player button
-        const altPlayerDiv = $stream("div#wtf.button");
-        if (altPlayerDiv.length > 0) {
-          const altPlayerLink = altPlayerDiv.find("a").attr("href");
-          if (altPlayerLink) {
-            console.log("[v0] AnimeSaturn: Found alternative player link:", altPlayerLink);
-
-            // Follow the alternative player link
-            const altPlayerUrl = altPlayerLink.startsWith("http")
-              ? altPlayerLink
-              : new URL(altPlayerLink, this.BASE_URL).href;
-
-            try {
-              const altRes = await this.fetchWithTimeout(altPlayerUrl);
-              if (altRes.ok) {
-                const altHtml = await altRes.text();
-                const $alt = cheerio.load(altHtml);
-
-                // Look for video with id="player-v" and m3u8 source
-                const playerVideo = $alt("video#player-v");
-                if (playerVideo.length > 0) {
-                  const m3u8Source = playerVideo.find('source[src*=".m3u8"]').attr("src");
-                  if (m3u8Source) {
-                    console.log("[v0] AnimeSaturn: Found m3u8 URL in alternative player:", m3u8Source);
-                    return m3u8Source.startsWith("http") ? m3u8Source : new URL(m3u8Source, this.BASE_URL).href;
-                  }
-                }
-              }
-            } catch (altError) {
-              console.log("[v0] AnimeSaturn: Error fetching alternative player:", altError);
-            }
-          }
-        }
-
-        // If alternative player didn't work, try direct m3u8 search in current page
-        console.log("[v0] AnimeSaturn: Trying direct m3u8 search");
-        const playerVideo = $stream("video#player-v");
-        if (playerVideo.length > 0) {
-          const m3u8Source = playerVideo.find('source[src*=".m3u8"]').attr("src");
-          if (m3u8Source) {
-            console.log("[v0] AnimeSaturn: Found m3u8 URL in player-v:", m3u8Source);
-            return m3u8Source.startsWith("http") ? m3u8Source : new URL(m3u8Source, this.BASE_URL).href;
-          }
-        }
-      }
-
-      if (!videoSrc) {
-        console.log("[v0] AnimeSaturn: No video source found");
-        console.log("[v0] AnimeSaturn: Page title:", $stream("title").text());
-        console.log("[v0] AnimeSaturn: Video elements found:", $stream("video").length);
-        console.log("[v0] AnimeSaturn: Source elements found:", $stream("source").length);
-        console.log("[v0] AnimeSaturn: Script tags found:", $stream("script").length);
-        return null;
-      }
-
-      const finalUrl = videoSrc.startsWith("http") ? videoSrc : new URL(videoSrc, this.BASE_URL).href;
-      console.log("[v0] AnimeSaturn: Final video source:", finalUrl);
-      return finalUrl;
+      return null;
     } catch (err) {
       console.error("AnimeSaturn stream error:", err);
       return null;
@@ -479,14 +336,12 @@ export class AnimeSaturnScraper extends BaseScraper {
 export async function searchAnime(query: string): Promise<ScrapedAnime[]> {
   const awScraper = new AnimeWorldScraper();
   const asScraper = new AnimeSaturnScraper();
-
   const [awResults, asResults] = await Promise.all([awScraper.search(query), asScraper.search(query)]);
   return aggregateAnime([awResults, asResults]);
 }
 
 export async function getAllEpisodes(anime: ScrapedAnime): Promise<ScrapedEpisode[]> {
   const episodesList: ScrapedEpisode[][] = [];
-
   for (const src of anime.sources ?? []) {
     let eps: ScrapedEpisode[] = [];
     if (src.name === "AnimeWorld") {
@@ -498,7 +353,6 @@ export async function getAllEpisodes(anime: ScrapedAnime): Promise<ScrapedEpisod
     }
     episodesList.push(eps);
   }
-
   return aggregateEpisodes(episodesList);
 }
 
@@ -512,8 +366,16 @@ async function example() {
   if (results.length > 0) {
     const episodes = await getAllEpisodes(results[0]);
     console.log(`Episodes for ${results[0].title}:`, episodes);
+
+    if (episodes.length > 0) {
+      const scraper = results[0].sources?.find((s) => s.name === "AnimeSaturn")
+        ? new AnimeSaturnScraper()
+        : new AnimeWorldScraper();
+      const stream = await scraper.getStreamUrl(episodes[0].id);
+      console.log("First episode stream URL:", stream);
+    }
   }
 }
 
 // Uncomment to test
-// example()
+// example();
