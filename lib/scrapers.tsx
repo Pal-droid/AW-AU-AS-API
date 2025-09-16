@@ -228,63 +228,116 @@ export class AnimeSaturnScraper extends BaseScraper {
 
   async search(query: string): Promise<ScrapedAnime[]> {
     try {
+      console.log(`[v0] AnimeSaturn search starting for query: "${query}"`)
       const url = `${this.BASE_URL}/animelist?search=${encodeURIComponent(query)}`
+      console.log(`[v0] AnimeSaturn search URL: ${url}`)
+
       const res = await this.fetchWithTimeout(url)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const html = await res.text()
+      console.log(`[v0] AnimeSaturn search HTML length: ${html.length}`)
+
       const $ = cheerio.load(html)
       const results: ScrapedAnime[] = []
 
-      $("ul.list-group li.list-group-item").each((_, el) => {
+      const listItems = $("ul.list-group li.list-group-item")
+      console.log(`[v0] AnimeSaturn found ${listItems.length} list items`)
+
+      listItems.each((index, el) => {
+        console.log(`[v0] Processing AnimeSaturn item ${index + 1}`)
+
+        // Look for the title link - it's in h3 > a.badge-archivio
         const titleLink = $(el).find("h3 a.badge-archivio")
         const animeUrl = titleLink.attr("href")
         const title = titleLink.text().trim()
-        if (!animeUrl || !title) return
 
-        const urlPath = new URL(animeUrl, this.BASE_URL).pathname
-        const animeId = urlPath.replace("/anime/", "")
+        console.log(`[v0] AnimeSaturn item ${index + 1}: title="${title}", url="${animeUrl}"`)
 
+        if (!animeUrl || !title) {
+          console.log(`[v0] AnimeSaturn item ${index + 1}: skipping due to missing title or URL`)
+          return
+        }
+
+        // Extract anime ID from URL path
+        let animeId: string
+        try {
+          const urlPath = new URL(animeUrl, this.BASE_URL).pathname
+          animeId = urlPath.replace("/anime/", "")
+          console.log(`[v0] AnimeSaturn item ${index + 1}: extracted ID="${animeId}"`)
+        } catch (e) {
+          console.log(`[v0] AnimeSaturn item ${index + 1}: failed to extract ID from URL`)
+          return
+        }
+
+        // Look for poster image
         let poster = $(el).find("img.copertina-archivio").attr("src")
-        if (poster && !poster.startsWith("http")) poster = new URL(poster, this.BASE_URL).href
+        if (poster && !poster.startsWith("http")) {
+          poster = new URL(poster, this.BASE_URL).href
+        }
+        console.log(`[v0] AnimeSaturn item ${index + 1}: poster="${poster}"`)
 
+        // Look for description
         const description = $(el).find("p.trama-anime-archivio").text().trim() || undefined
+        console.log(`[v0] AnimeSaturn item ${index + 1}: description length=${description?.length || 0}`)
 
         if (animeId) {
-          results.push({
+          const result = {
             title,
             url: animeUrl.startsWith("http") ? animeUrl : new URL(animeUrl, this.BASE_URL).href,
             id: animeId,
             poster,
             description,
             source: "AnimeSaturn",
-          })
+          }
+          results.push(result)
+          console.log(`[v0] AnimeSaturn item ${index + 1}: added to results`)
         }
       })
 
+      console.log(`[v0] AnimeSaturn search completed: ${results.length} results`)
       return results
     } catch (err) {
-      console.error("AnimeSaturn search error:", err)
+      console.error("[v0] AnimeSaturn search error:", err)
       return []
     }
   }
 
   async getEpisodes(animeId: string): Promise<ScrapedEpisode[]> {
     try {
+      console.log(`[v0] AnimeSaturn getEpisodes starting for ID: "${animeId}"`)
       const url = `${this.BASE_URL}/anime/${animeId}`
+      console.log(`[v0] AnimeSaturn episodes URL: ${url}`)
+
       const res = await this.fetchWithTimeout(url)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const html = await res.text()
+      console.log(`[v0] AnimeSaturn episodes HTML length: ${html.length}`)
+
       const $ = cheerio.load(html)
       const episodes: ScrapedEpisode[] = []
 
-      $(".btn-group.episodes-button a.btn.bottone-ep").each((_, el) => {
+      const episodeButtons = $(".btn-group.episodes-button a.btn.bottone-ep")
+      console.log(`[v0] AnimeSaturn found ${episodeButtons.length} episode buttons`)
+
+      episodeButtons.each((index, el) => {
         const epUrl = $(el).attr("href")
         const epText = $(el).text().trim()
-        const match = epText.match(/Episodio\s+(\d+)/i)
-        if (!epUrl || !match) return
+
+        console.log(`[v0] AnimeSaturn episode ${index + 1}: text="${epText}", url="${epUrl}"`)
+
+        // Extract episode number from text like "Episodio 1" or "1"
+        const match = epText.match(/(?:Episodio\s+)?(\d+)/i)
+        if (!epUrl || !match) {
+          console.log(`[v0] AnimeSaturn episode ${index + 1}: skipping due to missing URL or episode number`)
+          return
+        }
 
         const num = Number.parseInt(match[1])
-        const epId = epUrl.replace("/ep/", "").replace(this.BASE_URL, "")
+        // Extract episode ID from URL
+        let epId = epUrl.replace("/ep/", "").replace(this.BASE_URL, "")
+        if (epId.startsWith("/")) epId = epId.substring(1)
+
+        console.log(`[v0] AnimeSaturn episode ${index + 1}: number=${num}, id="${epId}"`)
 
         episodes.push({
           episode_number: num,
@@ -293,34 +346,55 @@ export class AnimeSaturnScraper extends BaseScraper {
         })
       })
 
-      return episodes.sort((a, b) => a.episode_number - b.episode_number)
+      const sortedEpisodes = episodes.sort((a, b) => a.episode_number - b.episode_number)
+      console.log(`[v0] AnimeSaturn getEpisodes completed: ${sortedEpisodes.length} episodes`)
+      return sortedEpisodes
     } catch (err) {
-      console.error("AnimeSaturn episodes error:", err)
+      console.error("[v0] AnimeSaturn episodes error:", err)
       return []
     }
   }
 
   async getStreamUrl(episodeId: string): Promise<ScrapedStream | null> {
     try {
+      console.log(`[v0] AnimeSaturn getStreamUrl starting for ID: "${episodeId}"`)
+
+      // Build episode URL
       const episodeUrl = episodeId.startsWith("http") ? episodeId : `${this.BASE_URL}/ep/${episodeId}`
+      console.log(`[v0] AnimeSaturn episode URL: ${episodeUrl}`)
+
       const res = await this.fetchWithTimeout(episodeUrl)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const html = await res.text()
+      console.log(`[v0] AnimeSaturn episode HTML length: ${html.length}`)
+
       const $ = cheerio.load(html)
 
-      const watchLink = $('a[href*="/watch"] .btn').parent().attr("href") || $('a[href*="/watch"]').attr("href")
-      if (!watchLink) return null
+      const watchLink = $('a[href*="/watch"]').attr("href") || $('a.btn[href*="/watch"]').attr("href")
+      console.log(`[v0] AnimeSaturn found watch link: ${watchLink}`)
+
+      if (!watchLink) {
+        console.log("[v0] AnimeSaturn: no watch link found")
+        return null
+      }
 
       const fullWatchUrl = watchLink.startsWith("http") ? watchLink : new URL(watchLink, this.BASE_URL).href
+      console.log(`[v0] AnimeSaturn full watch URL: ${fullWatchUrl}`)
 
       const streamRes = await this.fetchWithTimeout(fullWatchUrl)
       if (!streamRes.ok) throw new Error(`HTTP ${streamRes.status}`)
       const streamHtml = await streamRes.text()
+      console.log(`[v0] AnimeSaturn stream HTML length: ${streamHtml.length}`)
+
       const $stream = cheerio.load(streamHtml)
 
       const afterglowVideo = $stream("video.afterglow source[src*='.mp4']").attr("src")
+      console.log(`[v0] AnimeSaturn afterglow video found: ${afterglowVideo}`)
+
       if (afterglowVideo) {
         const mp4Url = afterglowVideo.startsWith("http") ? afterglowVideo : new URL(afterglowVideo, this.BASE_URL).href
+        console.log(`[v0] AnimeSaturn returning MP4 stream: ${mp4Url}`)
+
         return {
           stream_url: mp4Url,
           embed: `<video class="afterglow" data-skin="dark" preload="metadata" width="900" height="500" controls>
@@ -333,13 +407,19 @@ export class AnimeSaturnScraper extends BaseScraper {
       const scripts = $stream("script")
         .map((_, el) => $stream(el).html() || "")
         .get()
+
+      console.log(`[v0] AnimeSaturn found ${scripts.length} script tags`)
+
       for (const script of scripts) {
+        // Look for jwplayer setup with HLS file
         const jwPlayerMatch = script.match(
-          /jwplayer\s*$$\s*['"']player_hls['"]\s*$$\s*\.setup\s*\(\s*\{[^}]*file:\s*["']([^"']+\.m3u8)["']/,
+          /jwplayer\s*$$\s*['"]player_hls['"]\s*$$\s*\.setup\s*\(\s*\{[^}]*file:\s*["']([^"']+\.m3u8)["']/,
         )
+
         if (jwPlayerMatch) {
           const m3u8Url = jwPlayerMatch[1]
           const fullM3u8Url = m3u8Url.startsWith("http") ? m3u8Url : new URL(m3u8Url, this.BASE_URL).href
+          console.log(`[v0] AnimeSaturn found JWPlayer HLS: ${fullM3u8Url}`)
 
           const thumbnailsUrl = fullM3u8Url.replace("playlist.m3u8", "thumbnails.vtt")
           const posterUrl = fullM3u8Url.replace("playlist.m3u8", "poster.jpg")
@@ -375,10 +455,13 @@ export class AnimeSaturnScraper extends BaseScraper {
           }
         }
 
+        // Fallback: simple file match
         const simpleMatch = script.match(/file:\s*["']([^"']+\.m3u8)["']/)
         if (simpleMatch) {
           const m3u8Url = simpleMatch[1]
           const fullM3u8Url = m3u8Url.startsWith("http") ? m3u8Url : new URL(m3u8Url, this.BASE_URL).href
+          console.log(`[v0] AnimeSaturn found simple HLS: ${fullM3u8Url}`)
+
           return {
             stream_url: fullM3u8Url,
             provider: "AnimeSaturn-HLS-Simple",
@@ -386,18 +469,22 @@ export class AnimeSaturnScraper extends BaseScraper {
         }
       }
 
+      // Final fallback: any MP4 video
       const mp4 = $stream("video source[src*='.mp4']").attr("src")
       if (mp4) {
         const mp4Url = mp4.startsWith("http") ? mp4 : new URL(mp4, this.BASE_URL).href
+        console.log(`[v0] AnimeSaturn found fallback MP4: ${mp4Url}`)
+
         return {
           stream_url: mp4Url,
           provider: "AnimeSaturn-MP4-Fallback",
         }
       }
 
+      console.log("[v0] AnimeSaturn: no stream found")
       return null
     } catch (err) {
-      console.error("AnimeSaturn stream error:", err)
+      console.error("[v0] AnimeSaturn stream error:", err)
       return null
     }
   }
