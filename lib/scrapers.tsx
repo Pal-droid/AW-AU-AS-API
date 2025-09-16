@@ -232,46 +232,68 @@ export class AnimeWorldScraper extends BaseScraper {
  * AnimeSaturn Scraper
  * ------------------------- */
 export class AnimeSaturnScraper extends BaseScraper {
-  private readonly BASE_URL = "https://www.animesaturn.cx"
+  private readonly BASE_URL = "https://www.animesaturn.cx";
 
   async search(query: string): Promise<ScrapedAnime[]> {
     try {
-      const url = `${this.BASE_URL}/animelist?search=${encodeURIComponent(query)}`
-      const res = await this.fetchWithTimeout(url)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const html = await res.text()
-      const results: ScrapedAnime[] = []
+      const url = `${this.BASE_URL}/animelist?search=${encodeURIComponent(query)}`;
+      const res = await this.fetchWithTimeout(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      const html = await res.text();
+      const results: ScrapedAnime[] = [];
 
-      const $ = cheerio.load(html)
+      const $ = cheerio.load(html);
       $(".list-group-item").each((_, el) => {
-        const itemHtml = $(el).html()
-        const titleLink = $(el).find("h3 a.badge")
-        const animeUrl = titleLink.attr("href")
-        const title = titleLink.text().trim()
+        // Use a more specific selector for the title link
+        const titleLink = $(el).find("h3 a.badge-archivio");
+        const animeUrl = titleLink.attr("href");
+        const title = titleLink.text().trim();
 
-        if (!animeUrl) return
+        // Skip if no URL or title is found
+        if (!animeUrl || !title) {
+          console.warn("Skipping item: Missing URL or title", $(el).html());
+          return;
+        }
 
-        let animeId: string | null = null
+        // Extract anime ID from URL
+        let animeId: string | null = null;
         try {
-          animeId = new URL(animeUrl).pathname.split("/").filter(Boolean)[1]
-        } catch {}
-        if (!animeId) return
+          animeId = new URL(animeUrl, this.BASE_URL).pathname.split("/").filter(Boolean)[1];
+        } catch (e) {
+          console.warn(`Failed to parse anime ID from URL: ${animeUrl}`, e);
+          return;
+        }
+        if (!animeId) {
+          console.warn(`No anime ID found for URL: ${animeUrl}`);
+          return;
+        }
 
-        const posterMatch = $(el).find(".copertina-archivio").attr("src")
-        let poster = posterMatch ? posterMatch : undefined
-        if (poster && !poster.startsWith("http")) poster = new URL(poster, this.BASE_URL).href
+        // Get poster image
+        let poster = $(el).find(".copertina-archivio").attr("src");
+        if (poster && !poster.startsWith("http")) {
+          poster = new URL(poster, this.BASE_URL).href;
+        }
 
-        const description = $(el).find(".trama-anime-archivio").text().trim() || undefined
+        // Get description
+        const description = $(el).find(".trama-anime-archivio").text().trim() || undefined;
 
-        results.push({ title, url: animeUrl, id: animeId, poster, description, source: "AnimeSaturn" })
-      })
+        results.push({
+          title,
+          url: animeUrl,
+          id: animeId,
+          poster,
+          description,
+          source: "AnimeSaturn",
+        });
+      });
 
-      return results
+      return results;
     } catch (err) {
-      console.error("AnimeSaturn search error:", err)
-      return []
+      console.error("AnimeSaturn search error:", err);
+      return [];
     }
   }
+}
 
   async getEpisodes(animeId: string): Promise<ScrapedEpisode[]> {
     try {
