@@ -18,7 +18,7 @@ return NextResponse.json({ error: "Invalid request URL" }, { status: 400 })
 const searchParams = request.nextUrl.searchParams
 const query = searchParams.get("q")
 
-console.log([v0] Search endpoint called with query: '${query}')
+console.log("[v0] Search endpoint called with query: '${query}'")
 
 if (!query || query.trim().length < 2) {
 console.log("[v0] Query too short, returning error")
