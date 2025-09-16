@@ -235,7 +235,7 @@ export class AnimeSaturnScraper extends BaseScraper {
       const $ = cheerio.load(html)
       const results: ScrapedAnime[] = []
 
-      $(".list-group-item").each((_, el) => {
+      $("ul.list-group li.list-group-item").each((_, el) => {
         const titleLink = $(el).find("h3 a.badge-archivio")
         const animeUrl = titleLink.attr("href")
         const title = titleLink.text().trim()
@@ -277,7 +277,7 @@ export class AnimeSaturnScraper extends BaseScraper {
       const $ = cheerio.load(html)
       const episodes: ScrapedEpisode[] = []
 
-      $(".btn-group.episodes-button .btn.bottone-ep").each((_, el) => {
+      $(".btn-group.episodes-button a.btn.bottone-ep").each((_, el) => {
         const epUrl = $(el).attr("href")
         const epText = $(el).text().trim()
         const match = epText.match(/Episodio\s+(\d+)/i)
@@ -334,6 +334,7 @@ export class AnimeSaturnScraper extends BaseScraper {
         .map((_, el) => $stream(el).html() || "")
         .get()
       for (const script of scripts) {
+        // Look for jwplayer setup with file parameter
         const jwPlayerMatch = script.match(
           /jwplayer$$['"]player_hls['"]$$\.setup\(\{[^}]*file:\s*["']([^"']+\.m3u8)["']/,
         )
@@ -375,6 +376,7 @@ export class AnimeSaturnScraper extends BaseScraper {
           }
         }
 
+        // Fallback for simpler file: pattern
         const simpleMatch = script.match(/file:\s*["']([^"']+\.m3u8)["']/)
         if (simpleMatch) {
           const m3u8Url = simpleMatch[1]
