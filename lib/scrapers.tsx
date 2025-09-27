@@ -515,10 +515,3 @@ export async function getAllEpisodes(anime: ScrapedAnime): Promise<ScrapedEpisod
   }
   return aggregateEpisodes(episodesList)
 }
-
-/** -------------------------
- * Example Usage
- * ------------------------- */
-async function example() {
-  const results = await searchAnime("Naruto Shippuden")
-  console.log("Merged search
