@@ -62,7 +62,7 @@
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "latest",
-    "zod": "3.25.67"
+    "zod": "3.25.67",
     "@vitalets/google-translate-api": "^8.1.0",
     "string-similarity": "^4.0.4"
   },
