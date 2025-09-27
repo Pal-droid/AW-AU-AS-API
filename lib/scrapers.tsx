@@ -147,7 +147,7 @@ export class AnimeWorldScraper extends BaseScraper {
         const nameEl = $(el).find("a.name")
         if (!nameEl.length) return
         const relativeUrl = nameEl.attr("href")
-        const title = nameEl.attr("data-jtitle") || nameEl.text().trim()
+        const title = nameEl.text().trim() // Updated to use text content instead of data-jtitle
         if (!relativeUrl) return
 
         const fullUrl = new URL(relativeUrl, this.BASE_URL).href
@@ -427,7 +427,7 @@ export class AnimeSaturnScraper extends BaseScraper {
           return {
             stream_url: fullM3u8Url,
             embed: `<div class='embed-container'>
-  <div class="embed-responsive embed-responsive-16by9" style="max-width: 900px; max-height: 507px;">
+  <div class="embed-responsive embed-responsive-16by9" style="max-webkit-transform: translate3d(0, 0, 0);width: 900px; max-height: 507px;">
     <div class="embed-responsive-item">
       <script type="text/javascript">jwplayer.key="HZe74PoMs7KHhWW6h0ai21mozIoLHwv64N0/fA==";</script>
       <div id='player_hls' class="video_holder">
@@ -521,21 +521,4 @@ export async function getAllEpisodes(anime: ScrapedAnime): Promise<ScrapedEpisod
  * ------------------------- */
 async function example() {
   const results = await searchAnime("Naruto Shippuden")
-  console.log("Merged search results:", results)
-
-  if (results.length > 0) {
-    const episodes = await getAllEpisodes(results[0])
-    console.log(`Episodes for ${results[0].title}:`, episodes)
-
-    if (episodes.length > 0) {
-      const scraper = results[0].sources?.find((s) => s.name === "AnimeSaturn")
-        ? new AnimeSaturnScraper()
-        : new AnimeWorldScraper()
-      const stream = await scraper.getStreamUrl(episodes[0].id)
-      console.log("First episode stream URL:", stream)
-    }
-  }
-}
-
-// Uncomment to test
-// example();
+  console.log("Merged search
