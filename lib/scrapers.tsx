@@ -270,7 +270,7 @@ export class AnimeSaturnScraper extends BaseScraper {
         }
 
         // Look for poster image
-        let poster = $(el).find("img.copertina-archivio").attr("src")
+        let poster = $(el).find("img.locandina-archivio").attr("src")
         if (poster && !poster.startsWith("http")) {
           poster = new URL(poster, this.BASE_URL).href
         }
