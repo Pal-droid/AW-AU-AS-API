@@ -224,7 +224,7 @@ export class AnimeWorldScraper extends BaseScraper {
  * AnimeSaturn Scraper
  * ------------------------- */
 export class AnimeSaturnScraper extends BaseScraper {
-  private readonly BASE_URL = "https://www.animesaturn.cx"
+  private readonly BASE_URL = "https://www.anisaturn.net"
 
   async search(query: string): Promise<ScrapedAnime[]> {
     try {
