@@ -30,6 +30,7 @@ export interface StreamSource {
   available: boolean
   stream_url?: string
   embed?: string
+  provider?: string
 }
 
 export interface StreamResult {
