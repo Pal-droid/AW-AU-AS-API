@@ -370,6 +370,45 @@ export class AnimeSaturnScraper extends BaseScraper {
 
       const $ = cheerio.load(html)
 
+      const altServerLink =
+        $('a[href*="/watch"][href*="s=alt"]').attr("href") || $('a.btn[href*="/watch"][href*="s=alt"]').attr("href")
+
+      if (altServerLink) {
+        console.log(`[v0] AnimeSaturn found alternative server link: ${altServerLink}`)
+
+        const fullAltUrl = altServerLink.startsWith("http") ? altServerLink : new URL(altServerLink, this.BASE_URL).href
+        console.log(`[v0] AnimeSaturn full alternative watch URL: ${fullAltUrl}`)
+
+        try {
+          const altRes = await this.fetchWithTimeout(fullAltUrl)
+          if (altRes.ok) {
+            const altHtml = await altRes.text()
+            const $alt = cheerio.load(altHtml)
+
+            // Look for direct video source with m3u8
+            const videoSource =
+              $alt("video#player-v source[src*='.m3u8']").attr("src") || $alt("video source[src*='.m3u8']").attr("src")
+
+            if (videoSource) {
+              const fullVideoUrl = videoSource.startsWith("http")
+                ? videoSource
+                : new URL(videoSource, this.BASE_URL).href
+              console.log(`[v0] AnimeSaturn found Saturn-ALT stream: ${fullVideoUrl}`)
+
+              return {
+                stream_url: fullVideoUrl,
+                embed: `<video class="video-js" controls preload="auto" width="900" height="500">
+  <source src="${fullVideoUrl}" type="application/x-mpegURL" />
+</video>`,
+                provider: "Saturn-ALT",
+              }
+            }
+          }
+        } catch (altErr) {
+          console.log(`[v0] AnimeSaturn alternative server failed, falling back to main: ${altErr}`)
+        }
+      }
+
       const watchLink = $('a[href*="/watch"]').attr("href") || $('a.btn[href*="/watch"]').attr("href")
       console.log(`[v0] AnimeSaturn found watch link: ${watchLink}`)
 
