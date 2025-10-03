@@ -370,8 +370,7 @@ export class AnimeSaturnScraper extends BaseScraper {
 
       const $ = cheerio.load(html)
 
-      const altServerLink =
-        $('a[href*="/watch"][href*="s=alt"]').attr("href") || $('a.btn[href*="/watch"][href*="s=alt"]').attr("href")
+      const altServerLink = $('#wtf a[href*="/watch"]').attr("href")
 
       if (altServerLink) {
         console.log(`[v0] AnimeSaturn found alternative server link: ${altServerLink}`)
@@ -385,9 +384,10 @@ export class AnimeSaturnScraper extends BaseScraper {
             const altHtml = await altRes.text()
             const $alt = cheerio.load(altHtml)
 
-            // Look for direct video source with m3u8
             const videoSource =
-              $alt("video#player-v source[src*='.m3u8']").attr("src") || $alt("video source[src*='.m3u8']").attr("src")
+              $alt("video#player-v source[src*='.m3u8']").attr("src") ||
+              $alt("video#player-v source[type='application/x-mpegURL']").attr("src") ||
+              $alt("video source[src*='.m3u8']").attr("src")
 
             if (videoSource) {
               const fullVideoUrl = videoSource.startsWith("http")
@@ -402,14 +402,20 @@ export class AnimeSaturnScraper extends BaseScraper {
 </video>`,
                 provider: "Saturn-ALT",
               }
+            } else {
+              console.log("[v0] AnimeSaturn: no m3u8 source found in alternative server")
             }
           }
         } catch (altErr) {
           console.log(`[v0] AnimeSaturn alternative server failed, falling back to main: ${altErr}`)
         }
+      } else {
+        console.log("[v0] AnimeSaturn: no alternative server link found in div#wtf")
       }
 
-      const watchLink = $('a[href*="/watch"]').attr("href") || $('a.btn[href*="/watch"]').attr("href")
+      const watchLink =
+        $('a[href*="/watch"]:not(#wtf a)').first().attr("href") ||
+        $('a.btn[href*="/watch"]:not(#wtf a)').first().attr("href")
       console.log(`[v0] AnimeSaturn found watch link: ${watchLink}`)
 
       if (!watchLink) {
