@@ -15,16 +15,29 @@ export default function HomePage() {
               <code className="bg-gray-100 px-2 py-1 rounded">/api/search?q=naruto</code> - Search anime
             </li>
             <li>
-              <code className="bg-gray-100 px-2 py-1 rounded">/api/episodes?AW=anime-id&AS=anime-id</code> - Get
-              episodes
+              <code className="bg-gray-100 px-2 py-1 rounded">
+                /api/episodes?AW=anime-id&AS=anime-id&AP=anime-session
+              </code>{" "}
+              - Get episodes
             </li>
             <li>
-              <code className="bg-gray-100 px-2 py-1 rounded">/api/stream?AW=episode-id&AS=episode-id</code> - Get
-              stream URLs
+              <code className="bg-gray-100 px-2 py-1 rounded">
+                /api/stream?AW=episode-id&AS=episode-id&AP=episode-session&AP_ANIME=anime-session
+              </code>{" "}
+              - Get stream URLs
             </li>
             <li>
               <code className="bg-gray-100 px-2 py-1 rounded">/api/seasons?AW=anime-id&AS=anime-id</code> - Get seasons
             </li>
+          </ul>
+        </div>
+
+        <div className="mt-8">
+          <h2 className="text-2xl font-semibold mb-2">Supported Sources:</h2>
+          <ul className="list-disc list-inside space-y-1">
+            <li>AnimeWorld (AW)</li>
+            <li>AnimeSaturn (AS)</li>
+            <li>AnimePahe (AP)</li>
           </ul>
         </div>
       </div>

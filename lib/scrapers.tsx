@@ -536,13 +536,136 @@ export class AnimeSaturnScraper extends BaseScraper {
 }
 
 /** -------------------------
+ * AnimePahe Scraper
+ * ------------------------- */
+export class AnimePaheScraper extends BaseScraper {
+  private readonly API_BASE = "https://animepahe-api-jqwp.onrender.com"
+
+  async search(query: string): Promise<ScrapedAnime[]> {
+    try {
+      console.log(`[v0] AnimePahe search starting for query: "${query}"`)
+      const url = `${this.API_BASE}/search?q=${encodeURIComponent(query)}`
+      console.log(`[v0] AnimePahe search URL: ${url}`)
+
+      const res = await this.fetchWithTimeout(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      console.log(`[v0] AnimePahe search returned ${data.length} results`)
+
+      const results: ScrapedAnime[] = []
+
+      for (const anime of data) {
+        results.push({
+          title: anime.title,
+          url: anime.url,
+          id: anime.session,
+          poster: anime.poster,
+          description: `${anime.type} (${anime.year})`,
+          source: "AnimePahe",
+        })
+      }
+
+      console.log(`[v0] AnimePahe search completed: ${results.length} results`)
+      return results
+    } catch (err) {
+      console.error("[v0] AnimePahe search error:", err)
+      return []
+    }
+  }
+
+  async getEpisodes(animeSession: string): Promise<ScrapedEpisode[]> {
+    try {
+      console.log(`[v0] AnimePahe getEpisodes starting for session: "${animeSession}"`)
+      const url = `${this.API_BASE}/episodes?session=${encodeURIComponent(animeSession)}`
+      console.log(`[v0] AnimePahe episodes URL: ${url}`)
+
+      const res = await this.fetchWithTimeout(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      console.log(`[v0] AnimePahe found ${data.length} episodes`)
+
+      const episodes: ScrapedEpisode[] = []
+
+      for (const ep of data) {
+        episodes.push({
+          episode_number: ep.number,
+          id: ep.session,
+          url: ep.snapshot || "",
+        })
+      }
+
+      const sortedEpisodes = episodes.sort((a, b) => a.episode_number - b.episode_number)
+      console.log(`[v0] AnimePahe getEpisodes completed: ${sortedEpisodes.length} episodes`)
+      return sortedEpisodes
+    } catch (err) {
+      console.error("[v0] AnimePahe episodes error:", err)
+      return []
+    }
+  }
+
+  async getStreamUrl(episodeSession: string, animeSession: string): Promise<ScrapedStream | null> {
+    try {
+      console.log(`[v0] AnimePahe getStreamUrl starting for episode: "${episodeSession}", anime: "${animeSession}"`)
+
+      // First get the sources
+      const sourcesUrl = `${this.API_BASE}/sources?anime_session=${encodeURIComponent(animeSession)}&episode_session=${encodeURIComponent(episodeSession)}`
+      console.log(`[v0] AnimePahe sources URL: ${sourcesUrl}`)
+
+      const sourcesRes = await this.fetchWithTimeout(sourcesUrl)
+      if (!sourcesRes.ok) throw new Error(`HTTP ${sourcesRes.status}`)
+      const sources = await sourcesRes.json()
+      console.log(`[v0] AnimePahe found ${sources.length} sources`)
+
+      if (!sources || sources.length === 0) {
+        console.log("[v0] AnimePahe: no sources found")
+        return null
+      }
+
+      // Get the highest quality source (first one is usually highest)
+      const bestSource = sources[0]
+      console.log(`[v0] AnimePahe best source: ${bestSource.quality} - ${bestSource.url}`)
+
+      // Now resolve the m3u8 URL
+      const m3u8Url = `${this.API_BASE}/m3u8?url=${encodeURIComponent(bestSource.url)}`
+      console.log(`[v0] AnimePahe m3u8 URL: ${m3u8Url}`)
+
+      const m3u8Res = await this.fetchWithTimeout(m3u8Url)
+      if (!m3u8Res.ok) throw new Error(`HTTP ${m3u8Res.status}`)
+      const m3u8Data = await m3u8Res.json()
+      console.log(`[v0] AnimePahe resolved m3u8: ${m3u8Data.m3u8}`)
+
+      if (!m3u8Data.m3u8) {
+        console.log("[v0] AnimePahe: no m3u8 URL found")
+        return null
+      }
+
+      return {
+        stream_url: m3u8Data.m3u8,
+        embed: `<video class="video-js" controls preload="auto" width="900" height="500">
+  <source src="${m3u8Data.m3u8}" type="application/x-mpegURL" />
+</video>`,
+        provider: `AnimePahe-${bestSource.quality}`,
+      }
+    } catch (err) {
+      console.error("[v0] AnimePahe stream error:", err)
+      return null
+    }
+  }
+}
+
+/** -------------------------
  * Aggregated Search & Episodes
  * ------------------------- */
 export async function searchAnime(query: string): Promise<ScrapedAnime[]> {
   const awScraper = new AnimeWorldScraper()
   const asScraper = new AnimeSaturnScraper()
-  const [awResults, asResults] = await Promise.all([awScraper.search(query), asScraper.search(query)])
-  return aggregateAnime([awResults, asResults])
+  const apScraper = new AnimePaheScraper()
+  const [awResults, asResults, apResults] = await Promise.all([
+    awScraper.search(query),
+    asScraper.search(query),
+    apScraper.search(query),
+  ])
+  return aggregateAnime([awResults, asResults, apResults])
 }
 
 export async function getAllEpisodes(anime: ScrapedAnime): Promise<ScrapedEpisode[]> {
@@ -554,6 +677,9 @@ export async function getAllEpisodes(anime: ScrapedAnime): Promise<ScrapedEpisod
       eps = await scraper.getEpisodes(src.id)
     } else if (src.name === "AnimeSaturn") {
       const scraper = new AnimeSaturnScraper()
+      eps = await scraper.getEpisodes(src.id)
+    } else if (src.name === "AnimePahe") {
+      const scraper = new AnimePaheScraper()
       eps = await scraper.getEpisodes(src.id)
     }
     episodesList.push(eps)

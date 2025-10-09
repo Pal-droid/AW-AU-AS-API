@@ -36,6 +36,7 @@ export interface StreamSource {
 export interface StreamResult {
   AnimeWorld: StreamSource
   AnimeSaturn: StreamSource
+  AnimePahe?: StreamSource
 }
 
 export interface SeasonEpisodeSource {

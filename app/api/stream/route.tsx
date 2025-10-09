@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { AnimeWorldScraper, AnimeSaturnScraper } from "@/lib/scrapers"
+import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper } from "@/lib/scrapers"
 import type { StreamResult } from "@/lib/models"
 
 export async function OPTIONS() {
@@ -23,17 +23,30 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const AW = searchParams.get("AW")
   const AS = searchParams.get("AS")
+  const AP = searchParams.get("AP")
+  const AP_ANIME = searchParams.get("AP_ANIME")
 
-  console.log(`[v0] Stream endpoint called with AW: ${AW}, AS: ${AS}`)
+  console.log(`[v0] Stream endpoint called with AW: ${AW}, AS: ${AS}, AP: ${AP}, AP_ANIME: ${AP_ANIME}`)
 
-  if (!AW && !AS) {
-    return NextResponse.json({ error: "At least one episode ID (AW or AS) must be provided" }, { status: 400, headers })
+  if (!AW && !AS && !AP) {
+    return NextResponse.json(
+      { error: "At least one episode ID (AW, AS, or AP) must be provided" },
+      { status: 400, headers },
+    )
+  }
+
+  if (AP && !AP_ANIME) {
+    return NextResponse.json(
+      { error: "AnimePahe requires both AP (episode session) and AP_ANIME (anime session)" },
+      { status: 400, headers },
+    )
   }
 
   try {
     const tasks: Promise<any>[] = []
     const animeworldScraper = new AnimeWorldScraper()
     const animesaturnScraper = new AnimeSaturnScraper()
+    const animepaheScraper = new AnimePaheScraper()
 
     if (AW) {
       console.log(`[v0] Adding AnimeWorld stream task for ID: ${AW}`)
@@ -43,14 +56,21 @@ export async function GET(request: NextRequest) {
       console.log(`[v0] Adding AnimeSaturn stream task for ID: ${AS}`)
       tasks.push(animesaturnScraper.getStreamUrl(AS))
     }
+    if (AP && AP_ANIME) {
+      console.log(`[v0] Adding AnimePahe stream task for episode: ${AP}, anime: ${AP_ANIME}`)
+      tasks.push(animepaheScraper.getStreamUrl(AP, AP_ANIME))
+    }
 
     console.log(`[v0] Running ${tasks.length} stream scraping tasks`)
     const results = await Promise.allSettled(tasks)
     console.log(`[v0] Stream results:`, results)
 
-    const streamResult: StreamResult = {
+    const streamResult: StreamResult & {
+      AnimePahe?: { available: boolean; stream_url?: string; embed?: string; provider?: string }
+    } = {
       AnimeWorld: { available: false, stream_url: undefined, embed: undefined },
       AnimeSaturn: { available: false, stream_url: undefined, embed: undefined, provider: undefined },
+      AnimePahe: { available: false, stream_url: undefined, embed: undefined, provider: undefined },
     }
 
     // Process AnimeWorld result
@@ -68,9 +88,9 @@ export async function GET(request: NextRequest) {
       console.log(`[v0] AnimeWorld stream failed:`, results[0].reason)
     }
 
-    if (AS && results.length > (AW ? 1 : 0) && results[AW ? 1 : 0].status === "fulfilled") {
-      const resultIdx = AW ? 1 : 0
-      const data = results[resultIdx].value
+    const asIndex = AW ? 1 : 0
+    if (AS && results.length > asIndex && results[asIndex].status === "fulfilled") {
+      const data = results[asIndex].value
       console.log(`[v0] AnimeSaturn stream result:`, data)
 
       if (data) {
@@ -94,12 +114,33 @@ export async function GET(request: NextRequest) {
         streamResult.AnimeSaturn = {
           available: true,
           stream_url: url,
-          embed: finalEmbed, // This will be the proper JWPlayer embed for HLS or video tag for MP4
+          embed: finalEmbed,
           provider: provider,
         }
       }
-    } else if (AS && results[AW ? 1 : 0].status === "rejected") {
-      console.log(`[v0] AnimeSaturn stream failed:`, results[AW ? 1 : 0].reason)
+    } else if (AS && results[asIndex].status === "rejected") {
+      console.log(`[v0] AnimeSaturn stream failed:`, results[asIndex].reason)
+    }
+
+    const apIndex = (AW ? 1 : 0) + (AS ? 1 : 0)
+    if (AP && results.length > apIndex && results[apIndex].status === "fulfilled") {
+      const data = results[apIndex].value
+      console.log(`[v0] AnimePahe stream result:`, data)
+
+      if (data) {
+        const url = typeof data === "string" ? data : data.stream_url
+        const embedHtml = typeof data === "object" ? data.embed : undefined
+        const provider = typeof data === "object" ? data.provider : undefined
+
+        streamResult.AnimePahe = {
+          available: true,
+          stream_url: url,
+          embed: embedHtml,
+          provider: provider,
+        }
+      }
+    } else if (AP && results[apIndex].status === "rejected") {
+      console.log(`[v0] AnimePahe stream failed:`, results[apIndex].reason)
     }
 
     console.log(`[v0] Final stream result:`, streamResult)

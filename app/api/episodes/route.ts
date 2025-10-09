@@ -1,16 +1,16 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { AnimeWorldScraper, AnimeSaturnScraper } from "@/lib/scrapers"
+import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper } from "@/lib/scrapers"
 import type { EpisodeResult } from "@/lib/models"
 
 const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",       // allow all origins
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type,User-Agent", // allow User-Agent
+  "Access-Control-Allow-Headers": "Content-Type,User-Agent",
 }
 
 export async function OPTIONS() {
   return new NextResponse(null, {
-    status: 204,  // 204 No Content is common for preflight
+    status: 204,
     headers: CORS_HEADERS,
   })
 }
@@ -19,14 +19,15 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const AW = searchParams.get("AW")
   const AS = searchParams.get("AS")
+  const AP = searchParams.get("AP")
 
-  console.log(`[v0] Episodes endpoint called with AW: ${AW}, AS: ${AS}`)
+  console.log(`[v0] Episodes endpoint called with AW: ${AW}, AS: ${AS}, AP: ${AP}`)
 
-  if (!AW && !AS) {
+  if (!AW && !AS && !AP) {
     console.log("[v0] No IDs provided, returning error")
     return NextResponse.json(
-      { error: "At least one source ID (AW or AS) must be provided" },
-      { status: 400, headers: CORS_HEADERS }
+      { error: "At least one source ID (AW, AS, or AP) must be provided" },
+      { status: 400, headers: CORS_HEADERS },
     )
   }
 
@@ -34,9 +35,11 @@ export async function GET(request: NextRequest) {
     const tasks: Promise<any>[] = []
     const animeworldScraper = new AnimeWorldScraper()
     const animesaturnScraper = new AnimeSaturnScraper()
+    const animepaheScraper = new AnimePaheScraper()
 
     if (AW) tasks.push(animeworldScraper.getEpisodes(AW))
     if (AS) tasks.push(animesaturnScraper.getEpisodes(AS))
+    if (AP) tasks.push(animepaheScraper.getEpisodes(AP))
 
     const results = await Promise.allSettled(tasks)
 
@@ -50,18 +53,26 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    if (AS && results[AW ? 1 : 0].status === "fulfilled") {
-      const resultIdx = AW ? 1 : 0
-      for (const ep of results[resultIdx].value) {
+    const asIndex = AW ? 1 : 0
+    if (AS && results[asIndex]?.status === "fulfilled") {
+      for (const ep of results[asIndex].value) {
         const epNum = ep.episode_number
         if (!(epNum in allEpisodes)) allEpisodes[epNum] = { episode_number: epNum, sources: {} }
         allEpisodes[epNum].sources["AnimeSaturn"] = { available: true, url: ep.url || ep.stream_url, id: ep.id }
       }
     }
 
-    // Fill missing sources as unavailable
+    const apIndex = (AW ? 1 : 0) + (AS ? 1 : 0)
+    if (AP && results[apIndex]?.status === "fulfilled") {
+      for (const ep of results[apIndex].value) {
+        const epNum = ep.episode_number
+        if (!(epNum in allEpisodes)) allEpisodes[epNum] = { episode_number: epNum, sources: {} }
+        allEpisodes[epNum].sources["AnimePahe"] = { available: true, url: ep.url || ep.stream_url, id: ep.id }
+      }
+    }
+
     for (const epData of Object.values(allEpisodes)) {
-      for (const source of ["AnimeWorld", "AnimeSaturn"]) {
+      for (const source of ["AnimeWorld", "AnimeSaturn", "AnimePahe"]) {
         if (!(source in epData.sources)) epData.sources[source] = { available: false, url: undefined, id: undefined }
       }
     }
@@ -70,9 +81,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(sortedEpisodes, { headers: CORS_HEADERS })
   } catch (error) {
     console.log(`[v0] Exception in episodes endpoint: ${error}`)
-    return NextResponse.json(
-      { error: `Failed to get episodes: ${error}` },
-      { status: 500, headers: CORS_HEADERS }
-    )
+    return NextResponse.json({ error: `Failed to get episodes: ${error}` }, { status: 500, headers: CORS_HEADERS })
   }
 }
