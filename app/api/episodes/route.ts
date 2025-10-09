@@ -67,7 +67,12 @@ export async function GET(request: NextRequest) {
       for (const ep of results[apIndex].value) {
         const epNum = ep.episode_number
         if (!(epNum in allEpisodes)) allEpisodes[epNum] = { episode_number: epNum, sources: {} }
-        allEpisodes[epNum].sources["AnimePahe"] = { available: true, url: ep.url || ep.stream_url, id: ep.id }
+        allEpisodes[epNum].sources["AnimePahe"] = {
+          available: true,
+          url: ep.url || ep.stream_url,
+          id: ep.id,
+          animeSession: AP,
+        }
       }
     }
 

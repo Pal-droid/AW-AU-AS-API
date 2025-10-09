@@ -25,8 +25,9 @@ export async function GET(request: NextRequest) {
   const AS = searchParams.get("AS")
   const AP = searchParams.get("AP")
   const AP_ANIME = searchParams.get("AP_ANIME")
+  const res = searchParams.get("res")
 
-  console.log(`[v0] Stream endpoint called with AW: ${AW}, AS: ${AS}, AP: ${AP}, AP_ANIME: ${AP_ANIME}`)
+  console.log(`[v0] Stream endpoint called with AW: ${AW}, AS: ${AS}, AP: ${AP}, AP_ANIME: ${AP_ANIME}, res: ${res}`)
 
   if (!AW && !AS && !AP) {
     return NextResponse.json(
@@ -38,6 +39,13 @@ export async function GET(request: NextRequest) {
   if (AP && !AP_ANIME) {
     return NextResponse.json(
       { error: "AnimePahe requires both AP (episode session) and AP_ANIME (anime session)" },
+      { status: 400, headers },
+    )
+  }
+
+  if (AP && !res) {
+    return NextResponse.json(
+      { error: "Resolution parameter (res) is required for AnimePahe (e.g., ?res=1080)" },
       { status: 400, headers },
     )
   }
@@ -56,9 +64,9 @@ export async function GET(request: NextRequest) {
       console.log(`[v0] Adding AnimeSaturn stream task for ID: ${AS}`)
       tasks.push(animesaturnScraper.getStreamUrl(AS))
     }
-    if (AP && AP_ANIME) {
-      console.log(`[v0] Adding AnimePahe stream task for episode: ${AP}, anime: ${AP_ANIME}`)
-      tasks.push(animepaheScraper.getStreamUrl(AP, AP_ANIME))
+    if (AP && AP_ANIME && res) {
+      console.log(`[v0] Adding AnimePahe stream task for episode: ${AP}, anime: ${AP_ANIME}, resolution: ${res}`)
+      tasks.push(animepaheScraper.getStreamUrl(AP, AP_ANIME, res))
     }
 
     console.log(`[v0] Running ${tasks.length} stream scraping tasks`)
@@ -73,7 +81,6 @@ export async function GET(request: NextRequest) {
       AnimePahe: { available: false, stream_url: undefined, embed: undefined, provider: undefined },
     }
 
-    // Process AnimeWorld result
     if (AW && results.length > 0 && results[0].status === "fulfilled" && results[0].value) {
       console.log(`[v0] AnimeWorld stream result:`, results[0].value)
       const url = typeof results[0].value === "string" ? results[0].value : results[0].value.stream_url
@@ -99,7 +106,17 @@ export async function GET(request: NextRequest) {
         const provider = typeof data === "object" ? data.provider : undefined
 
         let finalEmbed = embedHtml
-        if (!finalEmbed && url && !url.includes(".m3u8")) {
+        if (!finalEmbed && url && url.includes(".m3u8")) {
+          const proxyUrl = `https://animesaturn-proxy.onrender.com/proxy?url=${encodeURIComponent(url)}`
+          finalEmbed = `<video 
+    src="${proxyUrl}" 
+    class="w-full h-full" 
+    controls 
+    playsinline 
+    preload="metadata" 
+    autoplay>
+</video>`
+        } else if (!finalEmbed && url) {
           const proxyUrl = `https://animesaturn-proxy.onrender.com/proxy?url=${encodeURIComponent(url)}`
           finalEmbed = `<video 
     src="${proxyUrl}" 
@@ -129,14 +146,25 @@ export async function GET(request: NextRequest) {
 
       if (data) {
         const url = typeof data === "string" ? data : data.stream_url
-        const embedHtml = typeof data === "object" ? data.embed : undefined
         const provider = typeof data === "object" ? data.provider : undefined
 
-        streamResult.AnimePahe = {
-          available: true,
-          stream_url: url,
-          embed: embedHtml,
-          provider: provider,
+        if (url) {
+          const proxyUrl = `https://animesaturn-proxy.onrender.com/proxy?url=${encodeURIComponent(url)}`
+          const embedHtml = `<video 
+    src="${proxyUrl}" 
+    class="w-full h-full" 
+    controls 
+    playsinline 
+    preload="metadata" 
+    autoplay>
+</video>`
+
+          streamResult.AnimePahe = {
+            available: true,
+            stream_url: url,
+            embed: embedHtml,
+            provider: provider || "AnimePahe",
+          }
         }
       }
     } else if (AP && results[apIndex].status === "rejected") {

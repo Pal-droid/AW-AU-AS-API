@@ -603,48 +603,55 @@ export class AnimePaheScraper extends BaseScraper {
     }
   }
 
-  async getStreamUrl(episodeSession: string, animeSession: string): Promise<ScrapedStream | null> {
+  async getStreamUrl(episodeSession: string, animeSession: string, resolution: string): Promise<ScrapedStream | null> {
     try {
-      console.log(`[v0] AnimePahe getStreamUrl starting for episode: "${episodeSession}", anime: "${animeSession}"`)
+      console.log(
+        `[v0] AnimePahe getStreamUrl starting for episode: "${episodeSession}", anime: "${animeSession}", resolution: ${resolution}`,
+      )
 
-      // First get the sources
+      // Step 1: Get the sources
       const sourcesUrl = `${this.API_BASE}/sources?anime_session=${encodeURIComponent(animeSession)}&episode_session=${encodeURIComponent(episodeSession)}`
       console.log(`[v0] AnimePahe sources URL: ${sourcesUrl}`)
 
       const sourcesRes = await this.fetchWithTimeout(sourcesUrl)
       if (!sourcesRes.ok) throw new Error(`HTTP ${sourcesRes.status}`)
       const sources = await sourcesRes.json()
-      console.log(`[v0] AnimePahe found ${sources.length} sources`)
+      console.log(`[v0] AnimePahe found ${sources.length} sources:`, sources)
 
       if (!sources || sources.length === 0) {
         console.log("[v0] AnimePahe: no sources found")
         return null
       }
 
-      // Get the highest quality source (first one is usually highest)
-      const bestSource = sources[0]
-      console.log(`[v0] AnimePahe best source: ${bestSource.quality} - ${bestSource.url}`)
+      // Step 2: Find the source matching the requested resolution
+      let selectedSource = sources.find((s: any) => s.quality === `${resolution}p`)
 
-      // Now resolve the m3u8 URL
-      const m3u8Url = `${this.API_BASE}/m3u8?url=${encodeURIComponent(bestSource.url)}`
-      console.log(`[v0] AnimePahe m3u8 URL: ${m3u8Url}`)
+      // Fallback to highest quality if requested resolution not found
+      if (!selectedSource) {
+        console.log(`[v0] AnimePahe: ${resolution}p not found, using highest quality`)
+        selectedSource = sources[0]
+      }
+
+      console.log(`[v0] AnimePahe selected source: ${selectedSource.quality} - ${selectedSource.url}`)
+
+      // Step 3: Resolve the m3u8 URL from the kwik link
+      const m3u8Url = `${this.API_BASE}/m3u8?url=${encodeURIComponent(selectedSource.url)}`
+      console.log(`[v0] AnimePahe m3u8 resolution URL: ${m3u8Url}`)
 
       const m3u8Res = await this.fetchWithTimeout(m3u8Url)
       if (!m3u8Res.ok) throw new Error(`HTTP ${m3u8Res.status}`)
       const m3u8Data = await m3u8Res.json()
-      console.log(`[v0] AnimePahe resolved m3u8: ${m3u8Data.m3u8}`)
+      console.log(`[v0] AnimePahe resolved m3u8:`, m3u8Data)
 
       if (!m3u8Data.m3u8) {
-        console.log("[v0] AnimePahe: no m3u8 URL found")
+        console.log("[v0] AnimePahe: no m3u8 URL found in response")
         return null
       }
 
+      // Return the m3u8 URL (will be proxied in the stream endpoint)
       return {
         stream_url: m3u8Data.m3u8,
-        embed: `<video class="video-js" controls preload="auto" width="900" height="500">
-  <source src="${m3u8Data.m3u8}" type="application/x-mpegURL" />
-</video>`,
-        provider: `AnimePahe-${bestSource.quality}`,
+        provider: `AnimePahe-${selectedSource.quality}`,
       }
     } catch (err) {
       console.error("[v0] AnimePahe stream error:", err)

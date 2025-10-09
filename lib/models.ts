@@ -19,6 +19,7 @@ export interface EpisodeSource {
   available: boolean
   url?: string
   id?: string
+  animeSession?: string
 }
 
 export interface EpisodeResult {
