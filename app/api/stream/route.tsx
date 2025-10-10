@@ -149,9 +149,9 @@ export async function GET(request: NextRequest) {
         const provider = typeof data === "object" ? data.provider : undefined
 
         if (url) {
-          const proxyUrl = `https://animesaturn-proxy.onrender.com/proxy?url=${encodeURIComponent(url)}`
+          const embedUrl = `https://animesaturn-proxy.onrender.com/embed?url=${encodeURIComponent(url)}`
           const embedHtml = `<video 
-    src="${proxyUrl}" 
+    src="${embedUrl}" 
     class="w-full h-full" 
     controls 
     playsinline 
