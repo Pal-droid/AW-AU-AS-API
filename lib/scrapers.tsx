@@ -682,7 +682,7 @@ export class AniUnityScraper extends BaseScraper {
           title,
           url: `${this.API_BASE}/anime/${anime.slug}`,
           id: String(anime.id),
-          poster: anime.poster,
+          poster: anime.thumbnail || anime.poster,
           description:
             anime.plot || `${anime.type} - ${anime.status} (${anime.date}) - Episodes: ${anime.episodes_count}`,
           source: "AniUnity",
