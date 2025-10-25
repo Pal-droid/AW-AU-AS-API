@@ -268,8 +268,8 @@ export async function detectDuplicates(
         title: awResult.title,
         description: asResult.description || awResult.description,
         images: {
-          poster: asResult.poster || awResult.poster,
-          cover: asResult.cover || awResult.cover,
+          poster: asResult.poster || awResult.poster || (auMatch ? auMatch[1].poster : null),
+          cover: asResult.cover || awResult.cover || (auMatch ? auMatch[1].cover : null),
         },
         sources,
         has_multi_servers: sources.length > 1,
@@ -290,7 +290,10 @@ export async function detectDuplicates(
       unifiedResults.push({
         title: awResult.title,
         description: awResult.description,
-        images: { poster: awResult.poster, cover: awResult.cover },
+        images: {
+          poster: awResult.poster || (apMatch ? apMatch[1].poster : null) || (auMatch ? auMatch[1].poster : null),
+          cover: awResult.cover || (apMatch ? apMatch[1].cover : null) || (auMatch ? auMatch[1].cover : null),
+        },
         sources,
         has_multi_servers: sources.length > 1,
       })
@@ -358,7 +361,10 @@ export async function detectDuplicates(
       unifiedResults.push({
         title: asResult.title,
         description: asResult.description,
-        images: { poster: asResult.poster, cover: asResult.cover },
+        images: {
+          poster: asResult.poster || (apMatch ? apMatch[1].poster : null) || (auMatch ? auMatch[1].poster : null),
+          cover: asResult.cover || (apMatch ? apMatch[1].cover : null) || (auMatch ? auMatch[1].cover : null),
+        },
         sources,
         has_multi_servers: sources.length > 1,
       })
@@ -400,7 +406,10 @@ export async function detectDuplicates(
       unifiedResults.push({
         title: apResult.title,
         description: apResult.description,
-        images: { poster: apResult.poster, cover: apResult.cover },
+        images: {
+          poster: apResult.poster || (auMatch ? auMatch[1].poster : null),
+          cover: apResult.cover || (auMatch ? auMatch[1].cover : null),
+        },
         sources,
         has_multi_servers: sources.length > 1,
       })
