@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper } from "@/lib/scrapers"
+import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper, AniUnityScraper } from "@/lib/scrapers"
 import type { StreamResult } from "@/lib/models"
 
 export async function OPTIONS() {
@@ -26,12 +26,15 @@ export async function GET(request: NextRequest) {
   const AP = searchParams.get("AP")
   const AP_ANIME = searchParams.get("AP_ANIME")
   const res = searchParams.get("res")
+  const AU = searchParams.get("AU")
 
-  console.log(`[v0] Stream endpoint called with AW: ${AW}, AS: ${AS}, AP: ${AP}, AP_ANIME: ${AP_ANIME}, res: ${res}`)
+  console.log(
+    `[v0] Stream endpoint called with AW: ${AW}, AS: ${AS}, AP: ${AP}, AP_ANIME: ${AP_ANIME}, res: ${res}, AU: ${AU}`,
+  )
 
-  if (!AW && !AS && !AP) {
+  if (!AW && !AS && !AP && !AU) {
     return NextResponse.json(
-      { error: "At least one episode ID (AW, AS, or AP) must be provided" },
+      { error: "At least one episode ID (AW, AS, AP, or AU) must be provided" },
       { status: 400, headers },
     )
   }
@@ -55,6 +58,7 @@ export async function GET(request: NextRequest) {
     const animeworldScraper = new AnimeWorldScraper()
     const animesaturnScraper = new AnimeSaturnScraper()
     const animepaheScraper = new AnimePaheScraper()
+    const aniunityScraper = new AniUnityScraper()
 
     if (AW) {
       console.log(`[v0] Adding AnimeWorld stream task for ID: ${AW}`)
@@ -68,6 +72,10 @@ export async function GET(request: NextRequest) {
       console.log(`[v0] Adding AnimePahe stream task for episode: ${AP}, anime: ${AP_ANIME}, resolution: ${res}`)
       tasks.push(animepaheScraper.getStreamUrl(AP, AP_ANIME, res))
     }
+    if (AU) {
+      console.log(`[v0] Adding AniUnity stream task for ID: ${AU}`)
+      tasks.push(aniunityScraper.getStreamUrl(AU))
+    }
 
     console.log(`[v0] Running ${tasks.length} stream scraping tasks`)
     const results = await Promise.allSettled(tasks)
@@ -75,10 +83,12 @@ export async function GET(request: NextRequest) {
 
     const streamResult: StreamResult & {
       AnimePahe?: { available: boolean; stream_url?: string; embed?: string; provider?: string }
+      AniUnity?: { available: boolean; stream_url?: string; embed?: string; provider?: string }
     } = {
       AnimeWorld: { available: false, stream_url: undefined, embed: undefined },
       AnimeSaturn: { available: false, stream_url: undefined, embed: undefined, provider: undefined },
       AnimePahe: { available: false, stream_url: undefined, embed: undefined, provider: undefined },
+      AniUnity: { available: false, stream_url: undefined, embed: undefined, provider: undefined },
     }
 
     if (AW && results.length > 0 && results[0].status === "fulfilled" && results[0].value) {
@@ -169,6 +179,29 @@ export async function GET(request: NextRequest) {
       }
     } else if (AP && results[apIndex].status === "rejected") {
       console.log(`[v0] AnimePahe stream failed:`, results[apIndex].reason)
+    }
+
+    const auIndex = (AW ? 1 : 0) + (AS ? 1 : 0) + (AP ? 1 : 0)
+    if (AU && results.length > auIndex && results[auIndex].status === "fulfilled") {
+      const data = results[auIndex].value
+      console.log(`[v0] AniUnity stream result:`, data)
+
+      if (data) {
+        const url = typeof data === "string" ? data : data.stream_url
+        const embedHtml = typeof data === "object" ? data.embed : undefined
+        const provider = typeof data === "object" ? data.provider : undefined
+
+        streamResult.AniUnity = {
+          available: true,
+          stream_url: url,
+          embed:
+            embedHtml ||
+            `<video src="${url}" class="w-full h-full" controls playsinline preload="metadata" autoplay></video>`,
+          provider: provider || "AniUnity",
+        }
+      }
+    } else if (AU && results[auIndex].status === "rejected") {
+      console.log(`[v0] AniUnity stream failed:`, results[auIndex].reason)
     }
 
     console.log(`[v0] Final stream result:`, streamResult)

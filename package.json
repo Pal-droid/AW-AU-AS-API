@@ -38,7 +38,6 @@
     "@radix-ui/react-toggle-group": "latest",
     "@radix-ui/react-tooltip": "latest",
     "@vercel/analytics": "latest",
-    "@vitalets/google-translate-api": "latest",
     "autoprefixer": "^10.4.20",
     "cheerio": "latest",
     "class-variance-authority": "^0.7.1",

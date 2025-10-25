@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio"
 import stringSimilarity from "string-similarity"
+import { normalizeTitle } from "./utils"
 
 export interface ScrapedAnime {
   title: string
@@ -38,13 +39,9 @@ class BaseScraper {
     const timeoutId = setTimeout(() => controller.abort(), this.timeout)
 
     try {
-      const fetchOptions: RequestInit = { headers: this.headers, signal: controller.signal }
-
-      if (typeof process !== "undefined" && process.env.NODE_ENV) {
-        const https = await import("https")
-        const agent = new https.Agent({ rejectUnauthorized: false })
-        // @ts-ignore
-        fetchOptions.agent = agent
+      const fetchOptions: RequestInit = {
+        headers: this.headers,
+        signal: controller.signal,
       }
 
       const response = await fetch(url, fetchOptions)
@@ -60,14 +57,6 @@ class BaseScraper {
 /** -------------------------
  * Normalization & Matching
  * ------------------------- */
-export function normalizeTitle(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/ita/gi, "") // remove (ITA)
-    .replace(/[^\w\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-}
 
 function findMatchingKey(map: Map<string, ScrapedAnime>, title: string): string | undefined {
   const normalized = normalizeTitle(title)
@@ -655,6 +644,122 @@ export class AnimePaheScraper extends BaseScraper {
       }
     } catch (err) {
       console.error("[v0] AnimePahe stream error:", err)
+      return null
+    }
+  }
+}
+
+/** -------------------------
+ * AniUnity Scraper
+ * ------------------------- */
+export class AniUnityScraper extends BaseScraper {
+  private readonly API_BASE = "https://delicate-rubia-hachu-9b0ceeb1.koyeb.app"
+
+  async search(query: string): Promise<ScrapedAnime[]> {
+    try {
+      console.log(`[v0] AniUnity search starting for query: "${query}"`)
+      const url = `${this.API_BASE}/search?title=${encodeURIComponent(query)}`
+      console.log(`[v0] AniUnity search URL: ${url}`)
+
+      const res = await this.fetchWithTimeout(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      console.log(`[v0] AniUnity search returned ${data.length} results`)
+
+      const results: ScrapedAnime[] = []
+
+      for (const anime of data) {
+        const isItalianDub = anime.slug && anime.slug.endsWith("-ita")
+        const baseTitle = anime.title_en || anime.title_it || "Unknown Title"
+
+        const title = isItalianDub && !baseTitle.includes("(ITA)") ? `${baseTitle} (ITA)` : baseTitle
+
+        console.log(
+          `[v0] AniUnity result: slug="${anime.slug}", title_en="${anime.title_en}", isItalianDub=${isItalianDub}, final title="${title}"`,
+        )
+
+        results.push({
+          title,
+          url: `${this.API_BASE}/anime/${anime.slug}`,
+          id: String(anime.id),
+          poster: anime.poster,
+          description:
+            anime.plot || `${anime.type} - ${anime.status} (${anime.date}) - Episodes: ${anime.episodes_count}`,
+          source: "AniUnity",
+        })
+      }
+
+      console.log(`[v0] AniUnity search completed: ${results.length} results`)
+      return results
+    } catch (err) {
+      console.error("[v0] AniUnity search error:", err)
+      return []
+    }
+  }
+
+  async getEpisodes(animeId: string): Promise<ScrapedEpisode[]> {
+    try {
+      console.log(`[v0] AniUnity getEpisodes starting for ID: "${animeId}"`)
+      const url = `${this.API_BASE}/episodes?anime_id=${encodeURIComponent(animeId)}`
+      console.log(`[v0] AniUnity episodes URL: ${url}`)
+
+      const res = await this.fetchWithTimeout(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      console.log(`[v0] AniUnity response:`, data)
+
+      if (!data.episodes || !Array.isArray(data.episodes)) {
+        console.log("[v0] AniUnity: no episodes array found")
+        return []
+      }
+
+      console.log(`[v0] AniUnity found ${data.episodes.length} episodes`)
+
+      const episodes: ScrapedEpisode[] = []
+
+      for (const ep of data.episodes) {
+        const episodeNumber = Number.parseInt(ep.number)
+        if (!isNaN(episodeNumber)) {
+          episodes.push({
+            episode_number: episodeNumber,
+            id: String(ep.episode_id),
+            url: `${this.API_BASE}/stream_video?episode_id=${ep.episode_id}`,
+          })
+        }
+      }
+
+      const sortedEpisodes = episodes.sort((a, b) => a.episode_number - b.episode_number)
+      console.log(`[v0] AniUnity getEpisodes completed: ${sortedEpisodes.length} episodes`)
+      return sortedEpisodes
+    } catch (err) {
+      console.error("[v0] AniUnity episodes error:", err)
+      return []
+    }
+  }
+
+  async getStreamUrl(episodeId: string): Promise<ScrapedStream | null> {
+    try {
+      console.log(`[v0] AniUnity getStreamUrl starting for episode ID: "${episodeId}"`)
+
+      // AniUnity provides direct stream URLs
+      const streamUrl = `${this.API_BASE}/stream_video?episode_id=${encodeURIComponent(episodeId)}`
+      console.log(`[v0] AniUnity stream URL: ${streamUrl}`)
+
+      // Return the stream URL to be embedded in a video tag
+      return {
+        stream_url: streamUrl,
+        embed: `<video 
+  src="${streamUrl}" 
+  class="w-full h-full" 
+  controls 
+  playsinline 
+  preload="metadata" 
+  autoplay>
+</video>`,
+        provider: "AniUnity",
+      }
+    } catch (err) {
+      console.error("[v0] AniUnity stream error:", err)
       return null
     }
   }
