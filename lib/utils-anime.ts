@@ -62,11 +62,58 @@ function hasSignificantDifference(title1: string, title2: string): boolean {
     }
   }
 
-  // If either title has significant unique words (length > 2), they might be different
-  const hasSignificantUnique1 = unique1.some((w) => w.length > 2)
-  const hasSignificantUnique2 = unique2.some((w) => w.length > 2)
+  // Check if one is a complete subset of the other (e.g., "tonikaku kawaii" vs "tonikaku kawaii sns")
+  const allWords1 = new Set(words1)
+  const allWords2 = new Set(words2)
 
-  return hasSignificantUnique1 && hasSignificantUnique2
+  const isSubset1 = words1.every((w) => allWords2.has(w))
+  const isSubset2 = words2.every((w) => allWords1.has(w))
+
+  // If one is a subset but they're not equal, they're different anime (one has a subtitle)
+  if ((isSubset1 || isSubset2) && words1.length !== words2.length) {
+    console.log(`[v0] Subtitle detected: "${title1}" vs "${title2}" (one is subset of other)`)
+    return true
+  }
+
+  // If either title has ANY unique words (excluding common words), they might be different
+  // This catches cases like "sns", "seifuku", "ova", "special", etc.
+  if (unique1.length > 0 || unique2.length > 0) {
+    console.log(
+      `[v0] Unique words detected: "${title1}" has [${unique1.join(", ")}], "${title2}" has [${unique2.join(", ")}]`,
+    )
+    return true
+  }
+
+  return false
+}
+
+/**
+ * Check if original titles (before normalization) have subtitle differences
+ * Returns true if they should NOT be matched
+ */
+function hasSubtitleDifference(title1: string, title2: string): boolean {
+  // Check for colon-based subtitles (e.g., "Title: Subtitle")
+  const hasColon1 = title1.includes(":")
+  const hasColon2 = title2.includes(":")
+
+  // If one has a colon subtitle and the other doesn't, they're different
+  if (hasColon1 !== hasColon2) {
+    console.log(`[v0] Colon subtitle asymmetry: "${title1}" vs "${title2}"`)
+    return true
+  }
+
+  // If both have colons, check if the subtitles are different
+  if (hasColon1 && hasColon2) {
+    const subtitle1 = title1.split(":").slice(1).join(":").trim().toLowerCase()
+    const subtitle2 = title2.split(":").slice(1).join(":").trim().toLowerCase()
+
+    if (subtitle1 !== subtitle2) {
+      console.log(`[v0] Different subtitles: "${subtitle1}" vs "${subtitle2}"`)
+      return true
+    }
+  }
+
+  return false
 }
 
 /**
@@ -85,6 +132,10 @@ export async function shouldMatch(awId: string, asId: string, awTitle?: string, 
 
       // Same base but different season/lang → compare translated titles
       if (awTitle && asTitle) {
+        if (hasSubtitleDifference(awTitle, asTitle)) {
+          return false
+        }
+
         const normalizedAW = normalizeTitle(awTitle)
         const normalizedAS = normalizeTitle(asTitle)
 
@@ -97,7 +148,7 @@ export async function shouldMatch(awId: string, asId: string, awTitle?: string, 
 
         console.log(`[v1] Same base, title similarity: "${normalizedAW}" vs "${normalizedAS}" = ${similarity}`)
 
-        return similarity >= 0.6 // lower threshold for same-base comparison
+        return similarity >= 0.85
       }
     }
   } catch (error) {
@@ -106,6 +157,10 @@ export async function shouldMatch(awId: string, asId: string, awTitle?: string, 
 
   // Fallback: compare titles directly
   if (awTitle && asTitle) {
+    if (hasSubtitleDifference(awTitle, asTitle)) {
+      return false
+    }
+
     const normalizedAW = normalizeTitle(awTitle)
     const normalizedAS = normalizeTitle(asTitle)
 
@@ -116,7 +171,7 @@ export async function shouldMatch(awId: string, asId: string, awTitle?: string, 
 
     const similarity = stringSimilarity.compareTwoStrings(normalizedAW, normalizedAS)
     console.log(`[v1] Title similarity: "${normalizedAW}" vs "${normalizedAS}" = ${similarity}`)
-    return similarity >= 0.75
+    return similarity >= 0.9
   }
 
   return false

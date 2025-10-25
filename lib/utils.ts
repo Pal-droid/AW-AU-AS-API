@@ -106,16 +106,6 @@ export function normalizeTitle(title: string): string {
     normalized = normalized.replace(regex, num)
   })
 
-  seasonWords.forEach((seasonWord) => {
-    // Pattern: "2nd season", "3rd season", "4th season" (with ordinal suffix)
-    const regex1 = new RegExp(`\\b(\\d+)(?:st|nd|rd|th)\\s+${seasonWord}\\b`, "gi")
-    normalized = normalized.replace(regex1, "$1")
-
-    // Pattern: "2 season", "3 season" (number without ordinal suffix before season word)
-    const regex2 = new RegExp(`\\b(\\d+)\\s+${seasonWord}\\b`, "gi")
-    normalized = normalized.replace(regex2, "$1")
-  })
-
   // Replace season patterns: "season 2", "stagione 2", "s2", "s 2", etc.
   seasonWords.forEach((seasonWord) => {
     // Pattern: "season 2" or "stagione 2"
