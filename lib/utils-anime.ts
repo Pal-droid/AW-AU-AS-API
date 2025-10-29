@@ -261,7 +261,7 @@ export async function detectDuplicates(
       if (auMatch) {
         const [k, auResult] = auMatch
         usedAniUnity.add(k)
-        sources.push({ name: "AniUnity", url: auResult.url, id: auResult.id })
+        sources.push({ name: "AniUnity", url: auResult.url, id: auResult.id, slug: auResult.slug })
       }
 
       unifiedResults.push({
@@ -284,7 +284,7 @@ export async function detectDuplicates(
       if (auMatch) {
         const [k, auResult] = auMatch
         usedAniUnity.add(k)
-        sources.push({ name: "AniUnity", url: auResult.url, id: auResult.id })
+        sources.push({ name: "AniUnity", url: auResult.url, id: auResult.id, slug: auResult.slug })
       }
 
       unifiedResults.push({
@@ -355,7 +355,7 @@ export async function detectDuplicates(
       if (auMatch) {
         const [j, auResult] = auMatch
         usedAniUnity.add(j)
-        sources.push({ name: "AniUnity", url: auResult.url, id: auResult.id })
+        sources.push({ name: "AniUnity", url: auResult.url, id: auResult.id, slug: auResult.slug })
       }
 
       unifiedResults.push({
@@ -400,7 +400,7 @@ export async function detectDuplicates(
       if (auMatch) {
         const [j, auResult] = auMatch
         usedAniUnity.add(j)
-        sources.push({ name: "AniUnity", url: auResult.url, id: auResult.id })
+        sources.push({ name: "AniUnity", url: auResult.url, id: auResult.id, slug: auResult.slug })
       }
 
       unifiedResults.push({
@@ -423,7 +423,7 @@ export async function detectDuplicates(
         title: auResult.title,
         description: auResult.description,
         images: { poster: auResult.poster, cover: auResult.cover },
-        sources: [{ name: "AniUnity", url: auResult.url, id: auResult.id }],
+        sources: [{ name: "AniUnity", url: auResult.url, id: auResult.id, slug: auResult.slug }],
         has_multi_servers: false,
       })
     }
