@@ -4,13 +4,12 @@ import { normalizeTitle } from "./utils"
 
 export interface ScrapedAnime {
   title: string
-  url: string
+  slug: string
   id: string
-  slug?: string
   poster?: string
   description?: string
   source: string
-  sources?: { name: string; url: string; id: string }[]
+  sources?: { name: string; slug: string; id: string }[]
 }
 
 export interface ScrapedEpisode {
@@ -92,7 +91,7 @@ export function aggregateAnime(results: ScrapedAnime[][]): ScrapedAnime[] {
         if (!existing.description && anime.description) existing.description = anime.description
 
         if (!existing.sources) existing.sources = []
-        for (const src of anime.sources ?? [{ name: anime.source, url: anime.url, id: anime.id }]) {
+        for (const src of anime.sources ?? [{ name: anime.source, slug: anime.slug, id: anime.id }]) {
           if (!existing.sources.find((s) => s.id === src.id)) {
             existing.sources.push(src)
           }
@@ -100,7 +99,7 @@ export function aggregateAnime(results: ScrapedAnime[][]): ScrapedAnime[] {
       } else {
         map.set(normalizedTitle, {
           ...anime,
-          sources: anime.sources ?? [{ name: anime.source, url: anime.url, id: anime.id }],
+          sources: anime.sources ?? [{ name: anime.source, slug: anime.slug, id: anime.id }],
         })
       }
     }
@@ -137,10 +136,8 @@ export class AnimeWorldScraper extends BaseScraper {
         const nameEl = $(el).find("a.name")
         if (!nameEl.length) return
         const relativeUrl = nameEl.attr("href")
-        const title = nameEl.text().trim() // Updated to use text content instead of data-jtitle
+        const title = nameEl.text().trim()
         if (!relativeUrl) return
-
-        const fullUrl = new URL(relativeUrl, this.BASE_URL).href
 
         let animeId: string | null = null
         const pathParts = relativeUrl.replace(/^\/+|\/+$/g, "").split("/")
@@ -151,7 +148,7 @@ export class AnimeWorldScraper extends BaseScraper {
         let posterUrl = imgEl.attr("src")
         if (posterUrl && !posterUrl.startsWith("http")) posterUrl = new URL(posterUrl, this.BASE_URL).href
 
-        if (animeId) results.push({ title, url: fullUrl, id: animeId, poster: posterUrl, source: "AnimeWorld" })
+        if (animeId) results.push({ title, slug: animeId, id: animeId, poster: posterUrl, source: "AnimeWorld" })
       })
 
       return results
@@ -236,7 +233,6 @@ export class AnimeSaturnScraper extends BaseScraper {
       listItems.each((index, el) => {
         console.log(`[v0] Processing AnimeSaturn item ${index + 1}`)
 
-        // Look for the title link - it's in h3 > a.badge-archivio
         const titleLink = $(el).find("h3 a.badge-archivio")
         const animeUrl = titleLink.attr("href")
         const title = titleLink.text().trim()
@@ -248,33 +244,30 @@ export class AnimeSaturnScraper extends BaseScraper {
           return
         }
 
-        // Extract anime ID from URL path
-        let animeId: string
+        let animeSlug: string
         try {
           const urlPath = new URL(animeUrl, this.BASE_URL).pathname
-          animeId = urlPath.replace("/anime/", "")
-          console.log(`[v0] AnimeSaturn item ${index + 1}: extracted ID="${animeId}"`)
+          animeSlug = urlPath.replace("/anime/", "")
+          console.log(`[v0] AnimeSaturn item ${index + 1}: extracted slug="${animeSlug}"`)
         } catch (e) {
-          console.log(`[v0] AnimeSaturn item ${index + 1}: failed to extract ID from URL`)
+          console.log(`[v0] AnimeSaturn item ${index + 1}: failed to extract slug from URL`)
           return
         }
 
-        // Look for poster image
         let poster = $(el).find("img.locandina-archivio").attr("src")
         if (poster && !poster.startsWith("http")) {
           poster = new URL(poster, this.BASE_URL).href
         }
         console.log(`[v0] AnimeSaturn item ${index + 1}: poster="${poster}"`)
 
-        // Look for description
         const description = $(el).find("p.trama-anime-archivio").text().trim() || undefined
         console.log(`[v0] AnimeSaturn item ${index + 1}: description length=${description?.length || 0}`)
 
-        if (animeId) {
+        if (animeSlug) {
           const result = {
             title,
-            url: animeUrl.startsWith("http") ? animeUrl : new URL(animeUrl, this.BASE_URL).href,
-            id: animeId,
+            slug: animeSlug,
+            id: animeSlug,
             poster,
             description,
             source: "AnimeSaturn",
@@ -547,7 +540,7 @@ export class AnimePaheScraper extends BaseScraper {
       for (const anime of data) {
         results.push({
           title: anime.title,
-          url: anime.url,
+          slug: anime.session,
           id: anime.session,
           poster: anime.poster,
           description: `${anime.type} (${anime.year})`,
@@ -681,9 +674,8 @@ export class AniUnityScraper extends BaseScraper {
 
         results.push({
           title,
-          url: `${this.API_BASE}/anime/${anime.slug}`,
-          id: anime.slug, // Using slug as ID instead of numeric ID
-          slug: anime.slug, // Storing slug explicitly
+          slug: anime.slug,
+          id: anime.slug,
           poster: anime.thumbnail || anime.poster,
           description:
             anime.plot || `${anime.type} - ${anime.status} (${anime.date}) - Episodes: ${anime.episodes_count}`,
