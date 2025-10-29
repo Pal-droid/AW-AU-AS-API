@@ -6,6 +6,7 @@ export interface ScrapedAnime {
   title: string
   slug: string
   id: string
+  url?: string
   poster?: string
   description?: string
   source: string
@@ -244,6 +245,8 @@ export class AnimeSaturnScraper extends BaseScraper {
           return
         }
 
+        const fullAnimeUrl = animeUrl.startsWith("http") ? animeUrl : new URL(animeUrl, this.BASE_URL).href
+
         let animeSlug: string
         try {
           const urlPath = new URL(animeUrl, this.BASE_URL).pathname
@@ -268,12 +271,13 @@ export class AnimeSaturnScraper extends BaseScraper {
             title,
             slug: animeSlug,
             id: animeSlug,
+            url: fullAnimeUrl,
             poster,
             description,
             source: "AnimeSaturn",
           }
           results.push(result)
-          console.log(`[v0] AnimeSaturn item ${index + 1}: added to results`)
+          console.log(`[v0] AnimeSaturn item ${index + 1}: added to results with URL: ${fullAnimeUrl}`)
         }
       })
 
