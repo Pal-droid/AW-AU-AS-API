@@ -6,6 +6,7 @@ export interface ScrapedAnime {
   title: string
   url: string
   id: string
+  slug?: string
   poster?: string
   description?: string
   source: string
@@ -681,7 +682,8 @@ export class AniUnityScraper extends BaseScraper {
         results.push({
           title,
           url: `${this.API_BASE}/anime/${anime.slug}`,
-          id: String(anime.id),
+          id: anime.slug, // Using slug as ID instead of numeric ID
+          slug: anime.slug, // Storing slug explicitly
           poster: anime.thumbnail || anime.poster,
           description:
             anime.plot || `${anime.type} - ${anime.status} (${anime.date}) - Episodes: ${anime.episodes_count}`,
@@ -700,7 +702,26 @@ export class AniUnityScraper extends BaseScraper {
   async getEpisodes(animeId: string): Promise<ScrapedEpisode[]> {
     try {
       console.log(`[v0] AniUnity getEpisodes starting for ID: "${animeId}"`)
-      const url = `${this.API_BASE}/episodes?anime_id=${encodeURIComponent(animeId)}`
+
+      let url: string
+      if (animeId.includes("-")) {
+        // It's a slug, need to get the numeric ID first
+        const animeUrl = `${this.API_BASE}/anime/${animeId}`
+        console.log(`[v0] AniUnity fetching anime details from slug: ${animeUrl}`)
+
+        const animeRes = await this.fetchWithTimeout(animeUrl)
+        if (!animeRes.ok) throw new Error(`HTTP ${animeRes.status}`)
+        const animeData = await animeRes.json()
+
+        const numericId = animeData.id
+        console.log(`[v0] AniUnity resolved slug "${animeId}" to numeric ID: ${numericId}`)
+
+        url = `${this.API_BASE}/episodes?anime_id=${encodeURIComponent(numericId)}`
+      } else {
+        // It's already a numeric ID
+        url = `${this.API_BASE}/episodes?anime_id=${encodeURIComponent(animeId)}`
+      }
+
       console.log(`[v0] AniUnity episodes URL: ${url}`)
 
       const res = await this.fetchWithTimeout(url)
