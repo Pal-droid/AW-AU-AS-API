@@ -669,13 +669,13 @@ export class AniUnityScraper extends BaseScraper {
         const title = isItalianDub && !baseTitle.includes("(ITA)") ? `${baseTitle} (ITA)` : baseTitle
 
         console.log(
-          `[v0] AniUnity result: slug="${anime.slug}", title_en="${anime.title_en}", isItalianDub=${isItalianDub}, final title="${title}"`,
+          `[v0] AniUnity result: id="${anime.id}", slug="${anime.slug}", title_en="${anime.title_en}", isItalianDub=${isItalianDub}, final title="${title}"`,
         )
 
         results.push({
           title,
           slug: anime.slug,
-          id: anime.slug,
+          id: String(anime.id),
           poster: anime.thumbnail || anime.poster,
           description:
             anime.plot || `${anime.type} - ${anime.status} (${anime.date}) - Episodes: ${anime.episodes_count}`,
@@ -695,25 +695,7 @@ export class AniUnityScraper extends BaseScraper {
     try {
       console.log(`[v0] AniUnity getEpisodes starting for ID: "${animeId}"`)
 
-      let url: string
-      if (animeId.includes("-")) {
-        // It's a slug, need to get the numeric ID first
-        const animeUrl = `${this.API_BASE}/anime/${animeId}`
-        console.log(`[v0] AniUnity fetching anime details from slug: ${animeUrl}`)
-
-        const animeRes = await this.fetchWithTimeout(animeUrl)
-        if (!animeRes.ok) throw new Error(`HTTP ${animeRes.status}`)
-        const animeData = await animeRes.json()
-
-        const numericId = animeData.id
-        console.log(`[v0] AniUnity resolved slug "${animeId}" to numeric ID: ${numericId}`)
-
-        url = `${this.API_BASE}/episodes?anime_id=${encodeURIComponent(numericId)}`
-      } else {
-        // It's already a numeric ID
-        url = `${this.API_BASE}/episodes?anime_id=${encodeURIComponent(animeId)}`
-      }
-
+      const url = `${this.API_BASE}/episodes?anime_id=${encodeURIComponent(animeId)}`
       console.log(`[v0] AniUnity episodes URL: ${url}`)
 
       const res = await this.fetchWithTimeout(url)
