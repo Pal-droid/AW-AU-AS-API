@@ -1,6 +1,5 @@
 import * as cheerio from "cheerio"
-import stringSimilarity from "string-similarity"
-import { normalizeTitle } from "./utils"
+import { normalizeTitle, stringSimilarity } from "./utils"
 
 export interface ScrapedAnime {
   title: string
@@ -66,7 +65,7 @@ function findMatchingKey(map: Map<string, ScrapedAnime>, title: string): string 
   const threshold = 0.7
 
   for (const key of map.keys()) {
-    const score = stringSimilarity.compareTwoStrings(normalized, key)
+    const score = stringSimilarity(normalized, key)
     if (score > threshold && score > bestScore) {
       bestScore = score
       bestMatch = key
@@ -429,8 +428,13 @@ export class AnimeSaturnScraper extends BaseScraper {
 
         return {
           stream_url: mp4Url,
-          embed: `<video class="afterglow" data-skin="dark" preload="metadata" width="900" height="500" controls>
-  <source type="video/mp4" src="${mp4Url}" />
+          embed: `<video 
+  src="${mp4Url}" 
+  class="w-full h-full" 
+  controls 
+  playsinline 
+  preload="metadata" 
+  autoplay>
 </video>`,
           provider: "AnimeSaturn-MP4",
         }

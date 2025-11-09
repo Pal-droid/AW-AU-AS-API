@@ -1,5 +1,4 @@
-import stringSimilarity from "string-similarity"
-import { parseId, normalizeTitle } from "./utils"
+import { parseId, normalizeTitle, stringSimilarity } from "./utils"
 
 /**
  * Check if two normalized titles have significant word differences
@@ -144,7 +143,7 @@ export async function shouldMatch(awId: string, asId: string, awTitle?: string, 
           return false
         }
 
-        const similarity = stringSimilarity.compareTwoStrings(normalizedAW, normalizedAS)
+        const similarity = stringSimilarity(normalizedAW, normalizedAS)
 
         console.log(`[v1] Same base, title similarity: "${normalizedAW}" vs "${normalizedAS}" = ${similarity}`)
 
@@ -169,7 +168,7 @@ export async function shouldMatch(awId: string, asId: string, awTitle?: string, 
       return false
     }
 
-    const similarity = stringSimilarity.compareTwoStrings(normalizedAW, normalizedAS)
+    const similarity = stringSimilarity(normalizedAW, normalizedAS)
     console.log(`[v1] Title similarity: "${normalizedAW}" vs "${normalizedAS}" = ${similarity}`)
     return similarity >= 0.9
   }
@@ -218,7 +217,7 @@ export async function detectDuplicates(
         continue
       }
 
-      const similarity = stringSimilarity.compareTwoStrings(normalizedAW, normalizedAP)
+      const similarity = stringSimilarity(normalizedAW, normalizedAP)
 
       if (similarity >= 0.75) {
         apMatch = [i, apResult]
@@ -239,7 +238,7 @@ export async function detectDuplicates(
         continue
       }
 
-      const similarity = stringSimilarity.compareTwoStrings(normalizedAW, normalizedAU)
+      const similarity = stringSimilarity(normalizedAW, normalizedAU)
 
       if (similarity >= 0.75) {
         auMatch = [i, auResult]
@@ -318,7 +317,7 @@ export async function detectDuplicates(
           continue
         }
 
-        const similarity = stringSimilarity.compareTwoStrings(normalizedAS, normalizedAP)
+        const similarity = stringSimilarity(normalizedAS, normalizedAP)
 
         if (similarity >= 0.75) {
           apMatch = [j, apResult]
@@ -338,7 +337,7 @@ export async function detectDuplicates(
           continue
         }
 
-        const similarity = stringSimilarity.compareTwoStrings(normalizedAS, normalizedAU)
+        const similarity = stringSimilarity(normalizedAS, normalizedAU)
 
         if (similarity >= 0.75) {
           auMatch = [j, auResult]
@@ -389,7 +388,7 @@ export async function detectDuplicates(
           continue
         }
 
-        const similarity = stringSimilarity.compareTwoStrings(normalizedAP, normalizedAU)
+        const similarity = stringSimilarity(normalizedAP, normalizedAU)
 
         if (similarity >= 0.75) {
           auMatch = [j, auResult]
