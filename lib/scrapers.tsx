@@ -614,35 +614,52 @@ export class AnimePaheScraper extends BaseScraper {
       console.log(`[v0] AnimePahe sources URL: ${sourcesUrl}`)
 
       const sourcesRes = await this.fetchWithTimeout(sourcesUrl)
-      if (!sourcesRes.ok) throw new Error(`HTTP ${sourcesRes.status}`)
+      if (!sourcesRes.ok) {
+        console.log(`[v0] AnimePahe sources request failed with status: ${sourcesRes.status}`)
+        throw new Error(`HTTP ${sourcesRes.status}`)
+      }
+      
       const data = await sourcesRes.json()
-      console.log(`[v0] AnimePahe sources response:`, data)
+      console.log(`[v0] AnimePahe sources response:`, JSON.stringify(data, null, 2))
 
       if (!data.sources || !Array.isArray(data.sources) || data.sources.length === 0) {
-        console.log("[v0] AnimePahe: no sources found")
+        console.log("[v0] AnimePahe: no sources found in response")
         return null
       }
 
-      // Find the source matching the requested resolution
-      let selectedSource = data.sources.find((s: any) => s.resolution === resolution)
+      console.log(`[v0] AnimePahe: found ${data.sources.length} sources`)
+
+      // Find the source matching the requested resolution (prefer non-dub)
+      let selectedSource = data.sources.find((s: any) => s.resolution === resolution && !s.isDub)
+
+      // Fallback to dub version if non-dub not found
+      if (!selectedSource) {
+        console.log(`[v0] AnimePahe: ${resolution}p non-dub not found, trying dub version`)
+        selectedSource = data.sources.find((s: any) => s.resolution === resolution && s.isDub)
+      }
 
       // Fallback to highest quality if requested resolution not found
       if (!selectedSource) {
         console.log(`[v0] AnimePahe: ${resolution}p not found, using highest quality`)
-        selectedSource = data.sources[0]
+        // Sort by resolution descending and pick the first non-dub, or first overall
+        const sortedSources = [...data.sources].sort((a: any, b: any) => parseInt(b.resolution) - parseInt(a.resolution))
+        selectedSource = sortedSources.find((s: any) => !s.isDub) || sortedSources[0]
       }
 
       console.log(`[v0] AnimePahe selected source:`, selectedSource)
 
-      if (!selectedSource.url) {
+      if (!selectedSource || !selectedSource.url) {
         console.log("[v0] AnimePahe: no URL in selected source")
         return null
       }
 
+      const dubLabel = selectedSource.isDub ? " (Dub)" : ""
+      console.log(`[v0] AnimePahe: returning stream URL: ${selectedSource.url}`)
+
       // Return the m3u8 URL (will be proxied in the stream endpoint)
       return {
         stream_url: selectedSource.url,
-        provider: `AnimePahe-${selectedSource.resolution}p`,
+        provider: `AnimePahe-${selectedSource.resolution}p${dubLabel}`,
       }
     } catch (err) {
       console.error("[v0] AnimePahe stream error:", err)
