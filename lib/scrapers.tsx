@@ -654,12 +654,12 @@ export class AnimePaheScraper extends BaseScraper {
       }
 
       const dubLabel = selectedSource.isDub ? " (Dub)" : ""
-      console.log(`[v0] AnimePahe: returning stream URL: ${selectedSource.url}`)
+      const providerLabel = `AnimePahe-${selectedSource.resolution}p${dubLabel}`
+      console.log(`[v0] AnimePahe: returning stream URL: ${selectedSource.url} with provider: ${providerLabel}`)
 
-      // Return the m3u8 URL (will be proxied in the stream endpoint)
       return {
         stream_url: selectedSource.url,
-        provider: `AnimePahe-${selectedSource.resolution}p${dubLabel}`,
+        provider: providerLabel,
       }
     } catch (err) {
       console.error("[v0] AnimePahe stream error:", err)
