@@ -16,13 +16,13 @@ export default function HomePage() {
             </li>
             <li>
               <code className="bg-gray-100 px-2 py-1 rounded">
-                /api/episodes?AW=anime-id&AS=anime-id&AP=anime-session&AU=anime-id
+                /api/episodes?AW=anime-id&AS=anime-id&AP=anime-session
               </code>{" "}
               - Get episodes
             </li>
             <li>
               <code className="bg-gray-100 px-2 py-1 rounded">
-                /api/stream?AW=episode-id&AS=episode-id&AP=episode-session&AP_ANIME=anime-session&AU=episode-id
+                /api/stream?AW=episode-id&AS=episode-id&AP=episode-session&AP_ANIME=anime-session
               </code>{" "}
               - Get stream URLs
             </li>
@@ -38,7 +38,6 @@ export default function HomePage() {
             <li>AnimeWorld (AW)</li>
             <li>AnimeSaturn (AS)</li>
             <li>AnimePahe (AP)</li>
-            <li>AniUnity (AU)</li>
           </ul>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper, AniUnityScraper } from "@/lib/scrapers"
+import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper } from "@/lib/scrapers"
 import { detectDuplicates } from "@/lib/utils-anime"
 
 export async function GET(request: Request) {
@@ -30,25 +30,20 @@ export async function GET(request: Request) {
     const animeworldScraper = new AnimeWorldScraper()
     const animesaturnScraper = new AnimeSaturnScraper()
     const animepaheScraper = new AnimePaheScraper()
-    const aniunityScraper = new AniUnityScraper()
 
-    const [animeworldResults, animesaturnResults, animepaheResults, aniunityResults] = await Promise.allSettled([
+    const [animeworldResults, animesaturnResults, animepaheResults] = await Promise.allSettled([
       animeworldScraper.search(query),
       animesaturnScraper.search(query),
       animepaheScraper.search(query),
-      aniunityScraper.search(query),
     ])
 
     const awResults = animeworldResults.status === "fulfilled" ? animeworldResults.value : []
     const asResults = animesaturnResults.status === "fulfilled" ? animesaturnResults.value : []
     const apResults = animepaheResults.status === "fulfilled" ? animepaheResults.value : []
-    const auResults = aniunityResults.status === "fulfilled" ? aniunityResults.value : []
 
-    console.log(
-      `[v1] Results - AW: ${awResults.length}, AS: ${asResults.length}, AP: ${apResults.length}, AU: ${auResults.length}`,
-    )
+    console.log(`[v1] Results - AW: ${awResults.length}, AS: ${asResults.length}, AP: ${apResults.length}`)
 
-    const unifiedResults = await detectDuplicates(awResults, asResults, apResults, auResults)
+    const unifiedResults = await detectDuplicates(awResults, asResults, apResults)
 
     console.log(`[v1] Unified results: ${unifiedResults.length}`)
     return NextResponse.json(unifiedResults)

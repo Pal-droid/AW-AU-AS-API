@@ -62,7 +62,7 @@ function findMatchingKey(map: Map<string, ScrapedAnime>, title: string): string 
   const normalized = normalizeTitle(title)
   let bestMatch: string | undefined
   let bestScore = 0
-  const threshold = 0.7
+  const threshold = 0.8
 
   for (const key of map.keys()) {
     const score = stringSimilarity(normalized, key)
@@ -530,7 +530,7 @@ export class AnimeSaturnScraper extends BaseScraper {
  * AnimePahe Scraper
  * ------------------------- */
 export class AnimePaheScraper extends BaseScraper {
-  private readonly API_BASE = "https://animepahe-api-jqwp.onrender.com"
+  private readonly API_BASE = "https://animepahe-two.vercel.app/api"
 
   async search(query: string): Promise<ScrapedAnime[]> {
     try {
@@ -540,18 +540,23 @@ export class AnimePaheScraper extends BaseScraper {
 
       const res = await this.fetchWithTimeout(url)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      console.log(`[v0] AnimePahe search returned ${data.length} results`)
+      const json = await res.json()
+      console.log(`[v0] AnimePahe search response:`, json)
+
+      if (!json.data || !Array.isArray(json.data)) {
+        console.log("[v0] AnimePahe: no data array found")
+        return []
+      }
 
       const results: ScrapedAnime[] = []
 
-      for (const anime of data) {
+      for (const anime of json.data) {
         results.push({
           title: anime.title,
           slug: anime.session,
           id: anime.session,
           poster: anime.poster,
-          description: `${anime.type} (${anime.year})`,
+          description: `${anime.type} (${anime.year}) - ${anime.season} - Episodes: ${anime.episodes}`,
           source: "AnimePahe",
         })
       }
@@ -567,19 +572,24 @@ export class AnimePaheScraper extends BaseScraper {
   async getEpisodes(animeSession: string): Promise<ScrapedEpisode[]> {
     try {
       console.log(`[v0] AnimePahe getEpisodes starting for session: "${animeSession}"`)
-      const url = `${this.API_BASE}/episodes?session=${encodeURIComponent(animeSession)}`
+      const url = `${this.API_BASE}/${animeSession}/releases`
       console.log(`[v0] AnimePahe episodes URL: ${url}`)
 
       const res = await this.fetchWithTimeout(url)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      console.log(`[v0] AnimePahe found ${data.length} episodes`)
+      const json = await res.json()
+      console.log(`[v0] AnimePahe episodes response:`, json)
+
+      if (!json.data || !Array.isArray(json.data)) {
+        console.log("[v0] AnimePahe: no data array found")
+        return []
+      }
 
       const episodes: ScrapedEpisode[] = []
 
-      for (const ep of data) {
+      for (const ep of json.data) {
         episodes.push({
-          episode_number: ep.number,
+          episode_number: ep.episode,
           id: ep.session,
           url: ep.snapshot || "",
         })
@@ -600,169 +610,42 @@ export class AnimePaheScraper extends BaseScraper {
         `[v0] AnimePahe getStreamUrl starting for episode: "${episodeSession}", anime: "${animeSession}", resolution: ${resolution}`,
       )
 
-      // Step 1: Get the sources
-      const sourcesUrl = `${this.API_BASE}/sources?anime_session=${encodeURIComponent(animeSession)}&episode_session=${encodeURIComponent(episodeSession)}`
+      const sourcesUrl = `${this.API_BASE}/play/${animeSession}?episodeId=${episodeSession}&downloads=false`
       console.log(`[v0] AnimePahe sources URL: ${sourcesUrl}`)
 
       const sourcesRes = await this.fetchWithTimeout(sourcesUrl)
       if (!sourcesRes.ok) throw new Error(`HTTP ${sourcesRes.status}`)
-      const sources = await sourcesRes.json()
-      console.log(`[v0] AnimePahe found ${sources.length} sources:`, sources)
+      const data = await sourcesRes.json()
+      console.log(`[v0] AnimePahe sources response:`, data)
 
-      if (!sources || sources.length === 0) {
+      if (!data.sources || !Array.isArray(data.sources) || data.sources.length === 0) {
         console.log("[v0] AnimePahe: no sources found")
         return null
       }
 
-      // Step 2: Find the source matching the requested resolution
-      let selectedSource = sources.find((s: any) => s.quality === `${resolution}p`)
+      // Find the source matching the requested resolution
+      let selectedSource = data.sources.find((s: any) => s.resolution === resolution)
 
       // Fallback to highest quality if requested resolution not found
       if (!selectedSource) {
         console.log(`[v0] AnimePahe: ${resolution}p not found, using highest quality`)
-        selectedSource = sources[0]
+        selectedSource = data.sources[0]
       }
 
-      console.log(`[v0] AnimePahe selected source: ${selectedSource.quality} - ${selectedSource.url}`)
+      console.log(`[v0] AnimePahe selected source:`, selectedSource)
 
-      // Step 3: Resolve the m3u8 URL from the kwik link
-      const m3u8Url = `${this.API_BASE}/m3u8?url=${encodeURIComponent(selectedSource.url)}`
-      console.log(`[v0] AnimePahe m3u8 resolution URL: ${m3u8Url}`)
-
-      const m3u8Res = await this.fetchWithTimeout(m3u8Url)
-      if (!m3u8Res.ok) throw new Error(`HTTP ${m3u8Res.status}`)
-      const m3u8Data = await m3u8Res.json()
-      console.log(`[v0] AnimePahe resolved m3u8:`, m3u8Data)
-
-      if (!m3u8Data.m3u8) {
-        console.log("[v0] AnimePahe: no m3u8 URL found in response")
+      if (!selectedSource.url) {
+        console.log("[v0] AnimePahe: no URL in selected source")
         return null
       }
 
       // Return the m3u8 URL (will be proxied in the stream endpoint)
       return {
-        stream_url: m3u8Data.m3u8,
-        provider: `AnimePahe-${selectedSource.quality}`,
+        stream_url: selectedSource.url,
+        provider: `AnimePahe-${selectedSource.resolution}p`,
       }
     } catch (err) {
       console.error("[v0] AnimePahe stream error:", err)
-      return null
-    }
-  }
-}
-
-/** -------------------------
- * AniUnity Scraper
- * ------------------------- */
-export class AniUnityScraper extends BaseScraper {
-  private readonly API_BASE = "https://delicate-rubia-hachu-9b0ceeb1.koyeb.app"
-
-  async search(query: string): Promise<ScrapedAnime[]> {
-    try {
-      console.log(`[v0] AniUnity search starting for query: "${query}"`)
-      const url = `${this.API_BASE}/search?title=${encodeURIComponent(query)}`
-      console.log(`[v0] AniUnity search URL: ${url}`)
-
-      const res = await this.fetchWithTimeout(url)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      console.log(`[v0] AniUnity search returned ${data.length} results`)
-
-      const results: ScrapedAnime[] = []
-
-      for (const anime of data) {
-        const isItalianDub = anime.slug && anime.slug.endsWith("-ita")
-        const baseTitle = anime.title_en || anime.title_it || "Unknown Title"
-
-        const title = isItalianDub && !baseTitle.includes("(ITA)") ? `${baseTitle} (ITA)` : baseTitle
-
-        console.log(
-          `[v0] AniUnity result: id="${anime.id}", slug="${anime.slug}", title_en="${anime.title_en}", isItalianDub=${isItalianDub}, final title="${title}"`,
-        )
-
-        results.push({
-          title,
-          slug: anime.slug,
-          id: String(anime.id),
-          poster: anime.thumbnail || anime.poster,
-          description:
-            anime.plot || `${anime.type} - ${anime.status} (${anime.date}) - Episodes: ${anime.episodes_count}`,
-          source: "AniUnity",
-        })
-      }
-
-      console.log(`[v0] AniUnity search completed: ${results.length} results`)
-      return results
-    } catch (err) {
-      console.error("[v0] AniUnity search error:", err)
-      return []
-    }
-  }
-
-  async getEpisodes(animeId: string): Promise<ScrapedEpisode[]> {
-    try {
-      console.log(`[v0] AniUnity getEpisodes starting for ID: "${animeId}"`)
-
-      const url = `${this.API_BASE}/episodes?anime_id=${encodeURIComponent(animeId)}`
-      console.log(`[v0] AniUnity episodes URL: ${url}`)
-
-      const res = await this.fetchWithTimeout(url)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      console.log(`[v0] AniUnity response:`, data)
-
-      if (!data.episodes || !Array.isArray(data.episodes)) {
-        console.log("[v0] AniUnity: no episodes array found")
-        return []
-      }
-
-      console.log(`[v0] AniUnity found ${data.episodes.length} episodes`)
-
-      const episodes: ScrapedEpisode[] = []
-
-      for (const ep of data.episodes) {
-        const episodeNumber = Number.parseInt(ep.number)
-        if (!isNaN(episodeNumber)) {
-          episodes.push({
-            episode_number: episodeNumber,
-            id: String(ep.episode_id),
-            url: `${this.API_BASE}/stream_video?episode_id=${ep.episode_id}`,
-          })
-        }
-      }
-
-      const sortedEpisodes = episodes.sort((a, b) => a.episode_number - b.episode_number)
-      console.log(`[v0] AniUnity getEpisodes completed: ${sortedEpisodes.length} episodes`)
-      return sortedEpisodes
-    } catch (err) {
-      console.error("[v0] AniUnity episodes error:", err)
-      return []
-    }
-  }
-
-  async getStreamUrl(episodeId: string): Promise<ScrapedStream | null> {
-    try {
-      console.log(`[v0] AniUnity getStreamUrl starting for episode ID: "${episodeId}"`)
-
-      // AniUnity provides direct stream URLs
-      const streamUrl = `${this.API_BASE}/stream_video?episode_id=${encodeURIComponent(episodeId)}`
-      console.log(`[v0] AniUnity stream URL: ${streamUrl}`)
-
-      // Return the stream URL to be embedded in a video tag
-      return {
-        stream_url: streamUrl,
-        embed: `<video 
-  src="${streamUrl}" 
-  class="w-full h-full" 
-  controls 
-  playsinline 
-  preload="metadata" 
-  autoplay>
-</video>`,
-        provider: "AniUnity",
-      }
-    } catch (err) {
-      console.error("[v0] AniUnity stream error:", err)
       return null
     }
   }
