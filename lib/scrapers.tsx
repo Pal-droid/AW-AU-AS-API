@@ -532,6 +532,55 @@ export class AnimeSaturnScraper extends BaseScraper {
 export class AnimePaheScraper extends BaseScraper {
   private readonly API_BASE = "https://animepahe-two.vercel.app/api"
 
+  private normalizeAnimePaheTitle(title: string): string {
+    let normalized = title
+
+    // Normalize season names to numbers
+    const seasonPatterns = [
+      // English ordinals
+      { pattern: /\bfirst\s+season\b/gi, replacement: "1" },
+      { pattern: /\bsecond\s+season\b/gi, replacement: "2" },
+      { pattern: /\bthird\s+season\b/gi, replacement: "3" },
+      { pattern: /\bfourth\s+season\b/gi, replacement: "4" },
+      { pattern: /\bfifth\s+season\b/gi, replacement: "5" },
+      { pattern: /\bsixth\s+season\b/gi, replacement: "6" },
+      { pattern: /\bseventh\s+season\b/gi, replacement: "7" },
+      { pattern: /\beighth\s+season\b/gi, replacement: "8" },
+      { pattern: /\bninth\s+season\b/gi, replacement: "9" },
+      { pattern: /\btenth\s+season\b/gi, replacement: "10" },
+
+      // Ordinal numbers with "season"
+      { pattern: /\b(\d+)(?:st|nd|rd|th)\s+season\b/gi, replacement: "$1" },
+
+      // Season followed by number
+      { pattern: /\bseason\s+(\d+)/gi, replacement: "$1" },
+
+      // S + number (e.g., "S2", "s2")
+      { pattern: /\bs(\d+)\b/gi, replacement: "$1" },
+
+      // Roman numerals
+      { pattern: /\bseason\s+i\b/gi, replacement: "1" },
+      { pattern: /\bseason\s+ii\b/gi, replacement: "2" },
+      { pattern: /\bseason\s+iii\b/gi, replacement: "3" },
+      { pattern: /\bseason\s+iv\b/gi, replacement: "4" },
+      { pattern: /\bseason\s+v\b/gi, replacement: "5" },
+      { pattern: /\bseason\s+vi\b/gi, replacement: "6" },
+      { pattern: /\bseason\s+vii\b/gi, replacement: "7" },
+      { pattern: /\bseason\s+viii\b/gi, replacement: "8" },
+    ]
+
+    for (const { pattern, replacement } of seasonPatterns) {
+      normalized = normalized.replace(pattern, replacement)
+    }
+
+    // Clean up extra whitespace
+    normalized = normalized.replace(/\s+/g, " ").trim()
+
+    console.log(`[v0] AnimePahe title normalized: "${title}" -> "${normalized}"`)
+
+    return normalized
+  }
+
   async search(query: string): Promise<ScrapedAnime[]> {
     try {
       console.log(`[v0] AnimePahe search starting for query: "${query}"`)
@@ -551,8 +600,10 @@ export class AnimePaheScraper extends BaseScraper {
       const results: ScrapedAnime[] = []
 
       for (const anime of json.data) {
+        const normalizedTitle = this.normalizeAnimePaheTitle(anime.title)
+
         results.push({
-          title: anime.title,
+          title: normalizedTitle,
           slug: anime.session,
           id: anime.session,
           poster: anime.poster,
@@ -618,7 +669,7 @@ export class AnimePaheScraper extends BaseScraper {
         console.log(`[v0] AnimePahe sources request failed with status: ${sourcesRes.status}`)
         throw new Error(`HTTP ${sourcesRes.status}`)
       }
-      
+
       const data = await sourcesRes.json()
       console.log(`[v0] AnimePahe sources response:`, JSON.stringify(data, null, 2))
 
@@ -642,7 +693,9 @@ export class AnimePaheScraper extends BaseScraper {
       if (!selectedSource) {
         console.log(`[v0] AnimePahe: ${resolution}p not found, using highest quality`)
         // Sort by resolution descending and pick the first non-dub, or first overall
-        const sortedSources = [...data.sources].sort((a: any, b: any) => parseInt(b.resolution) - parseInt(a.resolution))
+        const sortedSources = [...data.sources].sort(
+          (a: any, b: any) => Number.parseInt(b.resolution) - Number.parseInt(a.resolution),
+        )
         selectedSource = sortedSources.find((s: any) => !s.isDub) || sortedSources[0]
       }
 

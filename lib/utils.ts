@@ -187,16 +187,162 @@ export function parseId(animeId: string) {
 
   let season = 0
 
-  // Specific patterns first
-  if (parts.includes("vs") && parts.includes("u") && parts.includes("20") && parts.includes("japan")) {
-    season = 2
-    parts = parts.filter((p) => !["vs", "u", "20", "japan"].includes(p))
-  } else if (parts.includes("episode") && parts.includes("nagi")) {
-    season = 0
-    parts = parts.filter((p) => !["episode", "nagi"].includes(p))
-  } else if (parts.length > 0 && /^\d+$/.test(parts[parts.length - 1])) {
-    season = Number.parseInt(parts[parts.length - 1])
-    parts = parts.slice(0, -1)
+  // Season pattern detection - map season names/ordinals to numbers
+  const seasonPatterns: Record<string, number> = {
+    // English ordinals
+    first: 1,
+    "1st": 1,
+    second: 2,
+    "2nd": 2,
+    third: 3,
+    "3rd": 3,
+    fourth: 4,
+    "4th": 4,
+    fifth: 5,
+    "5th": 5,
+    sixth: 6,
+    "6th": 6,
+    seventh: 7,
+    "7th": 7,
+    eighth: 8,
+    "8th": 8,
+    ninth: 9,
+    "9th": 9,
+    tenth: 10,
+    "10th": 10,
+    // Italian
+    prima: 1,
+    primo: 1,
+    seconda: 2,
+    secondo: 2,
+    terza: 3,
+    terzo: 3,
+    quarta: 4,
+    quarto: 4,
+    quinta: 5,
+    quinto: 5,
+    // Spanish
+    primera: 1,
+    primero: 1,
+    segunda: 2,
+    segundo: 2,
+    tercera: 3,
+    tercero: 3,
+    cuarta: 4,
+    cuarto: 4,
+    quinta: 5,
+    quinto: 5,
+    // Roman numerals
+    i: 1,
+    ii: 2,
+    iii: 3,
+    iv: 4,
+    v: 5,
+    vi: 6,
+    vii: 7,
+    viii: 8,
+    ix: 9,
+    x: 10,
+  }
+
+  // Season keywords to remove after processing
+  const seasonKeywords = [
+    "season",
+    "seasons",
+    "s",
+    "stagione",
+    "stagioni", // Italian
+    "saison",
+    "saisons", // French
+    "temporada",
+    "temporadas", // Spanish
+    "staffel",
+    "staffeln", // German
+  ]
+
+  // Check for season patterns and normalize them
+  let foundSeason = false
+
+  // Pattern 1: "season-2", "2nd-season", etc.
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]
+
+    // Check if this part is a season keyword
+    if (seasonKeywords.includes(part)) {
+      // Look at adjacent parts for numbers
+      if (i > 0 && /^\d+$/.test(parts[i - 1])) {
+        season = Number.parseInt(parts[i - 1])
+        parts.splice(i - 1, 2) // Remove both number and season keyword
+        foundSeason = true
+        break
+      } else if (i < parts.length - 1 && /^\d+$/.test(parts[i + 1])) {
+        season = Number.parseInt(parts[i + 1])
+        parts.splice(i, 2) // Remove both season keyword and number
+        foundSeason = true
+        break
+      } else if (i > 0 && seasonPatterns[parts[i - 1]]) {
+        season = seasonPatterns[parts[i - 1]]
+        parts.splice(i - 1, 2)
+        foundSeason = true
+        break
+      } else if (i < parts.length - 1 && seasonPatterns[parts[i + 1]]) {
+        season = seasonPatterns[parts[i + 1]]
+        parts.splice(i, 2)
+        foundSeason = true
+        break
+      } else {
+        // Just "season" without number = season 1
+        parts.splice(i, 1)
+        foundSeason = true
+        break
+      }
+    }
+
+    // Check if this part is a season number/ordinal pattern
+    if (seasonPatterns[part]) {
+      // Check if next part is a season keyword
+      if (i < parts.length - 1 && seasonKeywords.includes(parts[i + 1])) {
+        season = seasonPatterns[part]
+        parts.splice(i, 2)
+        foundSeason = true
+        break
+      }
+    }
+  }
+
+  // Pattern 2: Ordinal/number at the end without explicit "season" keyword
+  if (!foundSeason && parts.length > 0) {
+    const lastPart = parts[parts.length - 1]
+
+    // Pure number at the end
+    if (/^\d+$/.test(lastPart)) {
+      season = Number.parseInt(lastPart)
+      parts = parts.slice(0, -1)
+      foundSeason = true
+    }
+    // Ordinal suffix: "2nd", "3rd", etc.
+    else if (/^\d+(st|nd|rd|th)$/.test(lastPart)) {
+      season = Number.parseInt(lastPart.replace(/[^\d]/g, ""))
+      parts = parts.slice(0, -1)
+      foundSeason = true
+    }
+    // Named ordinal or roman numeral at the end
+    else if (seasonPatterns[lastPart]) {
+      season = seasonPatterns[lastPart]
+      parts = parts.slice(0, -1)
+      foundSeason = true
+    }
+  }
+
+  // Specific patterns for edge cases
+  if (!foundSeason) {
+    if (parts.includes("vs") && parts.includes("u") && parts.includes("20") && parts.includes("japan")) {
+      season = 2
+      parts = parts.filter((p) => !["vs", "u", "20", "japan"].includes(p))
+    } else if (parts.includes("episode") && parts.includes("nagi")) {
+      season = 0
+      parts = parts.filter((p) => !["episode", "nagi"].includes(p))
+    }
   }
 
   const base = parts.join("-")
