@@ -1,0 +1,328 @@
+import { parseId, normalizeTitle, stringSimilarity } from "./utils"
+
+/**
+ * Check if two normalized titles have significant word differences
+ * Returns true if they should NOT be matched (i.e., they are different anime)
+ */
+function hasSignificantDifference(title1: string, title2: string): boolean {
+  const words1 = title1.split(" ").filter((w) => w.length > 0)
+  const words2 = title2.split(" ").filter((w) => w.length > 0)
+
+  // Common words that don't indicate a different anime (season/part indicators)
+  const commonWords = new Set(["season", "s", "part", "cour", "the", "and", "of", "a", "an"])
+
+  const languageTags = new Set([
+    "ita",
+    "sub",
+    "dub",
+    "eng",
+    "jpn",
+    "jap",
+    "esp",
+    "fra",
+    "ger",
+    "deu",
+    "subita",
+    "dubbed",
+    "subbed",
+    "italian",
+    "english",
+    "japanese",
+    "spanish",
+  ])
+
+  const hasLangTag1 = words1.some((w) => languageTags.has(w))
+  const hasLangTag2 = words2.some((w) => languageTags.has(w))
+
+  if (hasLangTag1 !== hasLangTag2) {
+    console.log(`[v0] Language tag asymmetry: "${title1}" (${hasLangTag1}) vs "${title2}" (${hasLangTag2})`)
+    return true
+  }
+
+  // Get unique words in each title (excluding common words and language tags)
+  const unique1 = words1.filter((w) => !words2.includes(w) && !commonWords.has(w) && !languageTags.has(w))
+  const unique2 = words2.filter((w) => !words1.includes(w) && !commonWords.has(w) && !languageTags.has(w))
+
+  const numbers1 = unique1.filter((w) => /^\d+$/.test(w))
+  const numbers2 = unique2.filter((w) => /^\d+$/.test(w))
+
+  // If one has season numbers and the other doesn't, they're different
+  // OR if both have different season numbers, they're different
+  if (numbers1.length > 0 || numbers2.length > 0) {
+    if (numbers1.length !== numbers2.length) {
+      return true
+    }
+    // Both have numbers - check if they're different
+    if (numbers1.length > 0 && numbers2.length > 0) {
+      const hasDifferentNumbers = numbers1.some((n1) => !numbers2.includes(n1))
+      if (hasDifferentNumbers) {
+        return true
+      }
+    }
+  }
+
+  // Check if one is a complete subset of the other (e.g., "tonikaku kawaii" vs "tonikaku kawaii sns")
+  const allWords1 = new Set(words1)
+  const allWords2 = new Set(words2)
+
+  const isSubset1 = words1.every((w) => allWords2.has(w))
+  const isSubset2 = words2.every((w) => allWords1.has(w))
+
+  // If one is a subset but they're not equal, they're different anime (one has a subtitle)
+  if ((isSubset1 || isSubset2) && words1.length !== words2.length) {
+    console.log(`[v0] Subtitle detected: "${title1}" vs "${title2}" (one is subset of other)`)
+    return true
+  }
+
+  // If either title has ANY unique words (excluding common words), they might be different
+  // This catches cases like "sns", "seifuku", "ova", "special", etc.
+  if (unique1.length > 0 || unique2.length > 0) {
+    console.log(
+      `[v0] Unique words detected: "${title1}" has [${unique1.join(", ")}], "${title2}" has [${unique2.join(", ")}]`,
+    )
+    return true
+  }
+
+  return false
+}
+
+/**
+ * Check if original titles (before normalization) have subtitle differences
+ * Returns true if they should NOT be matched
+ */
+function hasSubtitleDifference(title1: string, title2: string): boolean {
+  // Check for colon-based subtitles (e.g., "Title: Subtitle")
+  const hasColon1 = title1.includes(":")
+  const hasColon2 = title2.includes(":")
+
+  // If one has a colon subtitle and the other doesn't, they're different
+  if (hasColon1 !== hasColon2) {
+    console.log(`[v0] Colon subtitle asymmetry: "${title1}" vs "${title2}"`)
+    return true
+  }
+
+  // If both have colons, check if the subtitles are different
+  if (hasColon1 && hasColon2) {
+    const subtitle1 = title1.split(":").slice(1).join(":").trim().toLowerCase()
+    const subtitle2 = title2.split(":").slice(1).join(":").trim().toLowerCase()
+
+    if (subtitle1 !== subtitle2) {
+      console.log(`[v0] Different subtitles: "${subtitle1}" vs "${subtitle2}"`)
+      return true
+    }
+  }
+
+  return false
+}
+
+/**
+ * Async title/ID matcher with translation support
+ */
+export async function shouldMatch(awId: string, asId: string, awTitle?: string, asTitle?: string): Promise<boolean> {
+  try {
+    const awParsed = parseId(awId)
+    const asParsed = parseId(asId)
+
+    if (awParsed.base === asParsed.base) {
+      if (awParsed.season === asParsed.season && awParsed.lang === asParsed.lang) {
+        console.log(`[v1] Exact ID match: ${awId} <-> ${asId}`)
+        return true
+      }
+
+      // Same base but different season/lang → compare translated titles
+      if (awTitle && asTitle) {
+        if (hasSubtitleDifference(awTitle, asTitle)) {
+          return false
+        }
+
+        const normalizedAW = normalizeTitle(awTitle)
+        const normalizedAS = normalizeTitle(asTitle)
+
+        if (hasSignificantDifference(normalizedAW, normalizedAS)) {
+          console.log(`[v1] Significant difference detected: "${normalizedAW}" vs "${normalizedAS}"`)
+          return false
+        }
+
+        const similarity = stringSimilarity(normalizedAW, normalizedAS)
+
+        console.log(`[v1] Same base, title similarity: "${normalizedAW}" vs "${normalizedAS}" = ${similarity}`)
+
+        return similarity >= 0.8
+      }
+    }
+  } catch (error) {
+    console.log(`[v1] ID parsing failed: ${error}`)
+  }
+
+  // Fallback: compare titles directly
+  if (awTitle && asTitle) {
+    if (hasSubtitleDifference(awTitle, asTitle)) {
+      return false
+    }
+
+    const normalizedAW = normalizeTitle(awTitle)
+    const normalizedAS = normalizeTitle(asTitle)
+
+    if (hasSignificantDifference(normalizedAW, normalizedAS)) {
+      console.log(`[v1] Significant difference detected: "${normalizedAW}" vs "${normalizedAS}"`)
+      return false
+    }
+
+    const similarity = stringSimilarity(normalizedAW, normalizedAS)
+    console.log(`[v1] Title similarity: "${normalizedAW}" vs "${normalizedAS}" = ${similarity}`)
+    return similarity >= 0.8
+  }
+
+  return false
+}
+
+/**
+ * Async duplicate detection and merging for AnimeWorld + AnimeSaturn + AnimePahe results
+ */
+export async function detectDuplicates(
+  animeworldResults: any[],
+  animesaturnResults: any[],
+  animepaheResults: any[] = [],
+): Promise<any[]> {
+  const unifiedResults: any[] = []
+  const usedAnimesaturn = new Set<number>()
+  const usedAnimePahe = new Set<number>()
+
+  for (const awResult of animeworldResults) {
+    const sources = [{ name: "AnimeWorld", url: awResult.url, id: awResult.id }]
+    let bestMatch: [number, any] | null = null
+
+    for (let i = 0; i < animesaturnResults.length; i++) {
+      if (usedAnimesaturn.has(i)) continue
+      const asResult = animesaturnResults[i]
+
+      if (await shouldMatch(awResult.id, asResult.id, awResult.title, asResult.title)) {
+        bestMatch = [i, asResult]
+        break
+      }
+    }
+
+    let apMatch: [number, any] | null = null
+    for (let i = 0; i < animepaheResults.length; i++) {
+      if (usedAnimePahe.has(i)) continue
+      const apResult = animepaheResults[i]
+
+      // AnimePahe uses title-based matching since IDs are different format
+      const normalizedAW = normalizeTitle(awResult.title)
+      const normalizedAP = normalizeTitle(apResult.title)
+
+      if (hasSignificantDifference(normalizedAW, normalizedAP)) {
+        continue
+      }
+
+      const similarity = stringSimilarity(normalizedAW, normalizedAP)
+
+      if (similarity >= 0.8) {
+        apMatch = [i, apResult]
+        break
+      }
+    }
+
+    if (bestMatch) {
+      const [i, asResult] = bestMatch
+      usedAnimesaturn.add(i)
+      sources.push({ name: "AnimeSaturn", url: asResult.url, id: asResult.id })
+
+      if (apMatch) {
+        const [j, apResult] = apMatch
+        usedAnimePahe.add(j)
+        sources.push({ name: "AnimePahe", url: apResult.url, id: apResult.id })
+      }
+
+      unifiedResults.push({
+        title: awResult.title,
+        description: asResult.description || awResult.description,
+        images: {
+          poster: asResult.poster || awResult.poster,
+          cover: asResult.cover || awResult.cover,
+        },
+        sources,
+        has_multi_servers: sources.length > 1,
+      })
+    } else {
+      if (apMatch) {
+        const [j, apResult] = apMatch
+        usedAnimePahe.add(j)
+        sources.push({ name: "AnimePahe", url: apResult.url, id: apResult.id })
+      }
+
+      unifiedResults.push({
+        title: awResult.title,
+        description: awResult.description,
+        images: {
+          poster: awResult.poster || (apMatch ? apMatch[1].poster : null),
+          cover: awResult.cover || (apMatch ? apMatch[1].cover : null),
+        },
+        sources,
+        has_multi_servers: sources.length > 1,
+      })
+    }
+  }
+
+  // Add remaining unmatched AnimeSaturn results
+  for (let i = 0; i < animesaturnResults.length; i++) {
+    if (!usedAnimesaturn.has(i)) {
+      const asResult = animesaturnResults[i]
+      const sources = [{ name: "AnimeSaturn", url: asResult.url, id: asResult.id }]
+
+      let apMatch: [number, any] | null = null
+      for (let j = 0; j < animepaheResults.length; j++) {
+        if (usedAnimePahe.has(j)) continue
+        const apResult = animepaheResults[j]
+
+        const normalizedAS = normalizeTitle(asResult.title)
+        const normalizedAP = normalizeTitle(apResult.title)
+
+        if (hasSignificantDifference(normalizedAS, normalizedAP)) {
+          continue
+        }
+
+        const similarity = stringSimilarity(normalizedAS, normalizedAP)
+
+        if (similarity >= 0.8) {
+          apMatch = [j, apResult]
+          break
+        }
+      }
+
+      if (apMatch) {
+        const [j, apResult] = apMatch
+        usedAnimePahe.add(j)
+        sources.push({ name: "AnimePahe", url: apResult.url, id: apResult.id })
+      }
+
+      unifiedResults.push({
+        title: asResult.title,
+        description: asResult.description,
+        images: {
+          poster: asResult.poster || (apMatch ? apMatch[1].poster : null),
+          cover: asResult.cover || (apMatch ? apMatch[1].cover : null),
+        },
+        sources,
+        has_multi_servers: sources.length > 1,
+      })
+    }
+  }
+
+  // Add remaining unmatched AnimePahe results
+  for (let i = 0; i < animepaheResults.length; i++) {
+    if (!usedAnimePahe.has(i)) {
+      const apResult = animepaheResults[i]
+
+      unifiedResults.push({
+        title: apResult.title,
+        description: apResult.description,
+        images: { poster: apResult.poster, cover: apResult.cover },
+        sources: [{ name: "AnimePahe", url: apResult.url, id: apResult.id }],
+        has_multi_servers: false,
+      })
+    }
+  }
+
+  return unifiedResults
+}
