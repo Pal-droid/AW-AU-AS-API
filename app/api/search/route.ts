@@ -46,7 +46,17 @@ export async function GET(request: Request) {
     const unifiedResults = await detectDuplicates(awResults, asResults, apResults)
 
     console.log(`[v1] Unified results: ${unifiedResults.length}`)
-    return NextResponse.json(unifiedResults)
+
+    // -------------------------------
+    // ADD BROWSER + CDN CACHING HERE
+    // -------------------------------
+    return NextResponse.json(unifiedResults, {
+      status: 200,
+      headers: {
+        // Cache for 1 hour on CDN, 1 day stale-while-revalidate
+        "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
+      },
+    })
   } catch (error) {
     console.error(`[v1] Exception in search endpoint:`, error)
     return NextResponse.json(
