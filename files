@@ -1,0 +1,142 @@
+// lib/animeworld.ts
+import { load } from "cheerio";
+
+export const ANIMEWORLD_BASE = "https://www.animeworld.ac";
+
+export function parseEpisodes(html: string) {
+  const $ = load(html);
+  const episodes: any[] = [];
+  $("ul.episodes li a").each((_, el) => {
+    episodes.push({
+      episode_num: $(el).attr("data-episode-num"),
+      href: $(el).attr("href"),
+      data_id: $(el).attr("data-id"),
+    });
+  });
+  return episodes;
+}
+
+export function parseAlternativeDownload(html: string) {
+  const $ = load(html);
+  return $("#alternativeDownloadLink").attr("href") || null;
+}
+
+// app/api/episodes/route.ts
+import { type NextRequest, NextResponse } from "next/server";
+import { ANIMEWORLD_BASE, parseEpisodes } from "@/lib/animeworld";
+
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const path = searchParams.get("path");
+    if (!path) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Parametro 'path' mancante. Esempio: /play/horimiya.Mse3-/lRRhWd",
+        },
+        { status: 400 }
+      );
+    }
+    const url = path.startsWith("http") ? path : `${ANIMEWORLD_BASE}${path}`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) AnizoneBot/1.0 Safari/537.36",
+        "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        Referer: "https://www.animeworld.ac/",
+      },
+      next: { revalidate: 300 },
+    });
+    const html = await res.text();
+    const episodes = parseEpisodes(html);
+    return NextResponse.json({ ok: true, episodes, source: url });
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: e?.message || "Errore durante il recupero episodi" },
+      { status: 500 }
+    );
+  }
+}
+
+// app/api/stream/route.ts
+import { type NextRequest, NextResponse } from "next/server";
+import { ANIMEWORLD_BASE, parseAlternativeDownload } from "@/lib/animeworld";
+
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const path = searchParams.get("path");
+    if (!path) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Parametro 'path' mancante. Esempio: /play/naruto-ita.Ze1Qv/NoZjU",
+        },
+        { status: 400 }
+      );
+    }
+    const url = path.startsWith("http") ? path : `${ANIMEWORLD_BASE}${path}`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) AnizoneBot/1.0 Safari/537.36",
+        "Accept-Language": "it-IT,it;q=0.9",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        Referer: "https://www.animeworld.ac/",
+      },
+      next: { revalidate: 60 },
+    });
+    const html = await res.text();
+    const streamUrl = parseAlternativeDownload(html);
+    if (!streamUrl) {
+      return NextResponse.json(
+        { ok: false, error: "Link alternativo non trovato per questo episodio." },
+        { status: 404 }
+      );
+    }
+    return NextResponse.json({ ok: true, streamUrl, source: url });
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: e?.message || "Errore durante il recupero del link stream" },
+      { status: 500 }
+    );
+  }
+}
+
+// components/episode-player.tsx
+import { useState } from "react";
+import { Episode } from "@/types";
+import { fetchEpisodes } from "@/api";
+
+const EpisodePlayer = () => {
+  const [episodes, setEpisodes] = useState<Episode[]>([]);
+
+  const loadEpisodes = async () => {
+    const res = await fetchEpisodes();
+    const j = await res.json();
+    const epsRaw = (j.episodes || []) as any[];
+    const eps: Episode[] = epsRaw
+      .map((e) => {
+        const numStr = e.num ?? e.episode_num ?? e["data-episode-num"] ?? e.text;
+        const num = Number.parseInt(String(numStr || "0"), 10) || 0;
+        const href = e.href;
+        const id = e.id ?? e.data_id ?? e["data-id"];
+        if (!href || !num) return null;
+        return { num, href, id };
+      })
+      .filter(Boolean) as Episode[];
+
+    setEpisodes(eps);
+  };
+
+  return (
+    <div>
+      {/* Episode player component code here */}
+    </div>
+  );
+};
+
+export default EpisodePlayer;
