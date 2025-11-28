@@ -14,7 +14,7 @@ declare global {
 }
 
 type Episode = { num: number; href: string; id?: string; unifiedData?: any }
-type Source = { name: string; url: string; id: string }
+type Source = { name: string; url: string; id: string; animeSession?: string }
 
 function epKey(e: Episode) {
   return `${e.num}-${e.href}`
@@ -102,9 +102,11 @@ export function EpisodePlayer({
   const [episodeRefUrl, setEpisodeRefUrl] = useState<string | null>(null)
   const [proxyUrl, setProxyUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [loadingEpisodes, setLoadingEpisodes] = useState(true)
+  const [episodesLoading, setEpisodesLoading] = useState(false)
+  const [episodesError, setEpisodesError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [autoNext, setAutoNext] = useState<boolean>(true)
+  const [availableResolutions, setAvailableResolutions] = useState<string[]>(["1080", "720", "480", "360"])
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const hlsRef = useRef<any>(null)
@@ -117,22 +119,20 @@ export function EpisodePlayer({
 
   const availableServers = useMemo(() => {
     const serverNames = sources?.map((s) => s.name) || []
-    return serverNames.filter((name) => name === "AnimeWorld" || name === "AnimeSaturn")
+    return serverNames.filter((name) => name === "AnimeWorld" || name === "AnimeSaturn" || name === "AnimePahe")
   }, [sources])
 
   const serverDisplayNames = useMemo(
     () => ({
       AnimeWorld: "World",
       AnimeSaturn: "Saturn",
-      AnimePahe: "Pahe (non disponibile)",
+      AnimePahe: "Pahe",
     }),
     [],
   )
 
   const isEmbedServer = selectedServer === "AnimeSaturn"
   const isAnimePahe = selectedServer === "AnimePahe"
-
-  const availableResolutions = ["1080", "720", "480", "360"]
 
   useEffect(() => {
     if (currentPathRef.current && currentPathRef.current !== path) {
@@ -161,7 +161,7 @@ export function EpisodePlayer({
           setEpisodeRefUrl(null)
           setProxyUrl(null)
           setError(null)
-          setLoadingEpisodes(true)
+          setEpisodesLoading(true)
         }
       } catch (e) {
         console.log("[v0] Error clearing cached data:", e)
@@ -191,71 +191,86 @@ export function EpisodePlayer({
   }, [availableServers, selectedServer])
 
   useEffect(() => {
-    const abort = new AbortController()
-    ;(async () => {
-      setLoadingEpisodes(true)
-      setError(null)
+    if (!sources || sources.length === 0) {
+      console.log("[v0] loadEpisodes useEffect - No sources available")
+      return
+    }
+
+    console.log("[v0] loadEpisodes useEffect - Starting with selectedServer:", selectedServer)
+
+    async function loadEpisodes() {
+      console.log("[v0] loadEpisodes function called - episodesLoading:", episodesLoading)
+      if (episodesLoading) {
+        console.log("[v0] loadEpisodes - Already loading, returning early")
+        return
+      }
+      setEpisodesLoading(true)
+      setEpisodesError(null)
+
       try {
         console.log("[v0] Loading episodes for server:", selectedServer, "with sources:", sources)
 
-        // Find the source for the selected server
-        const currentSource = sources?.find((s) => s.name === selectedServer)
-
-        if (!currentSource?.id) {
-          // Try to find any available source
-          const anySource = sources?.find((s) => s.id)
-          if (!anySource) {
-            throw new Error("No source IDs available")
-          }
-        }
-
-        // Build params based on available sources
         const params = new URLSearchParams()
+
         const awSource = sources?.find((s) => s.name === "AnimeWorld")
         const asSource = sources?.find((s) => s.name === "AnimeSaturn")
+        const apSource = sources?.find((s) => s.name === "AnimePahe")
+
+        console.log("[v0] Found sources - AW:", awSource?.id, "AS:", asSource?.id, "AP:", apSource?.id)
 
         if (awSource?.id) params.set("AW", awSource.id)
         if (asSource?.id) params.set("AS", asSource.id)
+        if (apSource?.id) {
+          params.set("AP", apSource.id)
+        }
 
         console.log("[v0] Fetching episodes with params:", params.toString())
 
-        const apiUrl = `https://aw-au-as-api.vercel.app/api/episodes?${params}`
+        const apiUrl = `/api/episodes?${params}`
+        console.log("[v0] Fetching from URL:", apiUrl)
+
         const r = await fetch(apiUrl, {
-          signal: abort.signal,
+          signal: AbortSignal.timeout(20000),
           headers: {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
           },
         })
 
+        console.log("[v0] Fetch completed with status:", r.status)
+
         if (!r.ok) {
           const errorText = await r.text()
+          console.log("[v0] Episodes API error response:", errorText)
           throw new Error(`Episodes API failed: ${errorText}`)
         }
 
         const data = await r.json()
         console.log("[v0] Episodes API response:", data)
 
-        if (Array.isArray(data) && data.length > 0) {
-          const mapped: Episode[] = data.map((ep: any) => ({
-            num: ep.episode_number,
-            href: ep.sources?.AnimeWorld?.url || ep.sources?.AnimeSaturn?.url || "",
-            id: ep.sources?.AnimeWorld?.id || ep.sources?.AnimeSaturn?.id || "",
+        if (data.ok && Array.isArray(data.episodes) && data.episodes.length > 0) {
+          const mapped: Episode[] = data.episodes.map((ep: any) => ({
+            num: ep.num,
+            href: ep.sources?.AnimeWorld?.url || ep.sources?.AnimeSaturn?.url || ep.sources?.AnimePahe?.url || "",
+            id: ep.sources?.AnimeWorld?.id || ep.sources?.AnimeSaturn?.id || ep.sources?.AnimePahe?.id || "",
             unifiedData: ep,
           }))
+          console.log("[v0] Mapped episodes:", mapped.length)
           setEpisodes(mapped)
         } else {
+          console.log("[v0] No episodes in response")
           throw new Error("No episodes found")
         }
       } catch (e: any) {
-        if (abort.signal.aborted) return
         console.error("[v0] Episodes loading error:", e)
-        setError(e?.message || "Errore nel caricamento episodi")
+        setEpisodesError(e?.message || "Errore nel caricamento episodi")
       } finally {
-        if (!abort.signal.aborted) setLoadingEpisodes(false)
+        console.log("[v0] loadEpisodes finally - setting loading to false")
+        setEpisodesLoading(false)
       }
-    })()
-    return () => abort.abort()
-  }, [path, sources])
+    }
+
+    loadEpisodes()
+  }, [path, sources, selectedServer])
 
   const selectedEpisode = useMemo(
     () => (selectedKey ? (episodes.find((e) => epKey(e) === selectedKey) ?? null) : null),
@@ -265,14 +280,16 @@ export function EpisodePlayer({
   useEffect(() => {
     if (!selectedEpisode) return
     const abort = new AbortController()
-    ;(async () => {
+
+    async function load() {
       setLoading(true)
       setError(null)
       setStreamUrl(null)
       setEmbedUrl(null)
+      setEpisodeRefUrl(null)
       setProxyUrl(null)
 
-      const cacheKey = `anizone:stream:${epKey(selectedEpisode)}:${selectedServer}`
+      const cacheKey = `anizone:stream:${epKey(selectedEpisode)}:${selectedServer}:${selectedResolution}`
       const cached = localStorage.getItem(cacheKey)
       if (cached) {
         try {
@@ -303,6 +320,22 @@ export function EpisodePlayer({
         } else if (selectedServer === "AnimeSaturn" && unifiedEp.sources.AnimeSaturn?.id) {
           params.set("AS", unifiedEp.sources.AnimeSaturn.id)
           console.log("[v0] Using AnimeSaturn episode ID for stream:", unifiedEp.sources.AnimeSaturn.id)
+        } else if (
+          selectedServer === "AnimePahe" &&
+          unifiedEp.sources.AnimePahe?.id &&
+          unifiedEp.sources.AnimePahe?.animeSession
+        ) {
+          params.set("AP_ANIME", unifiedEp.sources.AnimePahe.animeSession)
+          params.set("AP", unifiedEp.sources.AnimePahe.id)
+          params.set("res", selectedResolution)
+          console.log(
+            "[v0] Using AnimePahe for stream - AP (episode id):",
+            unifiedEp.sources.AnimePahe.id,
+            "AP_ANIME (animeSession):",
+            unifiedEp.sources.AnimePahe.animeSession,
+            "resolution:",
+            selectedResolution,
+          )
         }
 
         if (!params.toString()) {
@@ -347,6 +380,17 @@ export function EpisodePlayer({
 
           // Cache the result
           localStorage.setItem(cacheKey, JSON.stringify({ streamUrl: rawStreamUrl, embedUrl: embed }))
+        } else if (selectedServer === "AnimePahe" && serverData.stream_url) {
+          const direct = serverData.stream_url
+          console.log("[v0] Got AnimePahe stream URL:", direct)
+          setStreamUrl(direct)
+          setEpisodeRefUrl(selectedEpisode.href)
+
+          // For AnimePahe, we don't need a proxy - just use the stream URL directly
+          setProxyUrl(direct)
+
+          // Cache the result
+          localStorage.setItem(cacheKey, JSON.stringify({ streamUrl: direct, proxyUrl: direct }))
         } else if (selectedServer === "AnimeWorld" && serverData.stream_url) {
           const direct = serverData.stream_url
           console.log("[v0] Got AnimeWorld stream URL:", direct)
@@ -370,9 +414,60 @@ export function EpisodePlayer({
       } finally {
         if (!abort.signal.aborted) setLoading(false)
       }
-    })()
+    }
+
+    load()
     return () => abort.abort()
-  }, [selectedEpisode, selectedServer, selectedResolution, path])
+  }, [selectedEpisode, selectedServer, selectedResolution])
+
+  useEffect(() => {
+    if (selectedServer !== "AnimePahe" || !selectedEpisode) return
+
+    const unifiedEp = selectedEpisode.unifiedData
+    if (!unifiedEp?.sources?.AnimePahe?.id || !unifiedEp?.sources?.AnimePahe?.animeSession) return
+
+    async function testResolutions() {
+      const resolutionsToTest = ["1080", "720", "480", "360"]
+      const available: string[] = []
+
+      for (const res of resolutionsToTest) {
+        try {
+          const params = new URLSearchParams()
+          params.set("AP_ANIME", unifiedEp.sources.AnimePahe.animeSession)
+          params.set("AP", unifiedEp.sources.AnimePahe.id)
+          params.set("res", res)
+
+          const apiUrl = `https://aw-au-as-api.vercel.app/api/stream?${params}`
+          const r = await fetch(apiUrl, {
+            signal: AbortSignal.timeout(5000),
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            },
+          })
+
+          if (r.ok) {
+            const streamData = await r.json()
+            if (streamData.AnimePahe?.available && streamData.AnimePahe?.stream_url) {
+              available.push(res)
+              console.log("[v0] AnimePahe resolution", res, "is available")
+            }
+          }
+        } catch (e) {
+          console.log("[v0] AnimePahe resolution", res, "test failed:", e)
+        }
+      }
+
+      if (available.length > 0) {
+        setAvailableResolutions(available)
+        // If current resolution is not available, switch to highest available
+        if (!available.includes(selectedResolution)) {
+          setSelectedResolution(available[0])
+        }
+      }
+    }
+
+    testResolutions()
+  }, [selectedServer, selectedEpisode])
 
   useEffect(() => {
     return () => {
@@ -609,7 +704,7 @@ export function EpisodePlayer({
         </div>
 
         <div className="flex gap-2 overflow-x-auto no-scrollbar snap-x pb-1">
-          {loadingEpisodes ? (
+          {episodesLoading ? (
             Array.from({ length: 10 }).map((_, i) => (
               <div key={i} className="h-9 w-14 rounded-full bg-neutral-800 animate-pulse shrink-0" />
             ))
@@ -647,7 +742,7 @@ export function EpisodePlayer({
             <Loader2 className="h-5 w-5 animate-spin" />
             Caricamento...
           </div>
-        ) : embedUrl ? (
+        ) : embedUrl && !isAnimePahe ? (
           <iframe
             key={embedUrl}
             ref={iframeRef}
@@ -676,7 +771,10 @@ export function EpisodePlayer({
             src={proxyUrl}
             onError={() => {
               setError("Errore di riproduzione. Riprovo...")
-              if (selectedEpisode) localStorage.removeItem(`anizone:stream:${epKey(selectedEpisode)}`)
+              if (selectedEpisode)
+                localStorage.removeItem(
+                  `anizone:stream:${epKey(selectedEpisode)}:${selectedServer}:${selectedResolution}`,
+                )
               setProxyUrl(null)
               setTimeout(() => {
                 setSelectedKey((k) => (k ? `${k}` : k))

@@ -29,6 +29,7 @@ export default function HomePage() {
             <div className="animate-float">
               <AnimatedLogo />
             </div>
+
             <nav className="flex items-center gap-2">
               {[
                 { href: "/lists", icon: List, label: "Le mie liste" },
@@ -50,6 +51,7 @@ export default function HomePage() {
                   <span>{item.label}</span>
                 </Link>
               ))}
+
               <button
                 onClick={() => setShowBugReport(true)}
                 className={cn(
@@ -66,22 +68,33 @@ export default function HomePage() {
           </div>
         </header>
 
+        {/* ---------- HERO SECTION (FIXED + CENTERED) ---------- */}
         <section className="px-8 py-8 max-w-[1400px] mx-auto">
           <div className="relative overflow-hidden rounded-3xl bg-card p-10 mb-10 shadow-lg">
             <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-accent/5 to-transparent" />
-            <div className="relative z-10 max-w-4xl">
-              <div className="flex items-center gap-3 mb-5">
+
+            {/* Main hero content width */}
+            <div className="relative z-10 w-full max-w-[900px] mx-auto text-center">
+
+              {/* Title + icon */}
+              <div className="flex items-center gap-3 mb-5 justify-center">
                 <div className="w-10 h-10 rounded-2xl bg-primary/15 flex items-center justify-center">
                   <Sparkles className="text-primary" size={22} />
                 </div>
-                <h1 className="text-4xl font-bold text-foreground">Guarda anime in italiano</h1>
+
+                <h1 className="text-4xl font-bold text-foreground">
+                  Guarda anime in italiano
+                </h1>
               </div>
-              <div className="relative max-w-2xl">
+
+              {/* Search bar (now same width as title) */}
+              <div className="relative w-full max-w-[900px] mx-auto">
                 <HeroSearch />
               </div>
             </div>
           </div>
 
+          {/* ---------- MAIN CONTENT ---------- */}
           <div className="grid grid-cols-12 gap-6">
             <div className="col-span-8 space-y-6">
               <LazySection className="surface-elevated p-6">
@@ -112,11 +125,13 @@ export default function HomePage() {
             </div>
           </div>
         </section>
+
         <BugReportDialog isOpen={showBugReport} onClose={() => setShowBugReport(false)} />
       </main>
     )
   }
 
+  // ---------- MOBILE VERSION ----------
   return (
     <main className="min-h-screen bg-background">
       <SlideOutMenu currentPath="/" />
@@ -132,13 +147,17 @@ export default function HomePage() {
       <section className="px-4 py-6 space-y-5">
         <div className="relative overflow-hidden rounded-3xl bg-card p-6 shadow-lg">
           <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-accent/5 to-transparent" />
+
           <div className="relative z-10">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-9 h-9 rounded-xl bg-primary/15 flex items-center justify-center">
                 <Sparkles className="text-primary" size={18} />
               </div>
-              <h1 className="text-2xl font-bold text-foreground">Guarda anime in italiano</h1>
+              <h1 className="text-2xl font-bold text-foreground">
+                Guarda anime in italiano
+              </h1>
             </div>
+
             <HeroSearch />
           </div>
         </div>

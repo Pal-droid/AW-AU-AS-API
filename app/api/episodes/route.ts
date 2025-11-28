@@ -66,7 +66,14 @@ export const GET = withCors(async (req: NextRequest) => {
                           id: asSource.id,
                         }
                       : { available: false },
-                    AnimePahe: { available: false },
+                    AnimePahe: apSource
+                      ? {
+                          available: !!apSource.available,
+                          url: apSource.url || "",
+                          id: apSource.id,
+                          animeSession: apSource.animeSession,
+                        }
+                      : { available: false },
                   },
                 }
               })
