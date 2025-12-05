@@ -532,6 +532,55 @@ export class AnimeSaturnScraper extends BaseScraper {
 export class AnimePaheScraper extends BaseScraper {
   private readonly API_BASE = "https://animepahe-two.vercel.app/api"
 
+  private normalizeAnimePaheTitle(title: string): string {
+    let normalized = title
+
+    // Normalize season names to numbers
+    const seasonPatterns = [
+      // English ordinals
+      { pattern: /\bfirst\s+season\b/gi, replacement: "1" },
+      { pattern: /\bsecond\s+season\b/gi, replacement: "2" },
+      { pattern: /\bthird\s+season\b/gi, replacement: "3" },
+      { pattern: /\bfourth\s+season\b/gi, replacement: "4" },
+      { pattern: /\bfifth\s+season\b/gi, replacement: "5" },
+      { pattern: /\bsixth\s+season\b/gi, replacement: "6" },
+      { pattern: /\bseventh\s+season\b/gi, replacement: "7" },
+      { pattern: /\beighth\s+season\b/gi, replacement: "8" },
+      { pattern: /\bninth\s+season\b/gi, replacement: "9" },
+      { pattern: /\btenth\s+season\b/gi, replacement: "10" },
+
+      // Ordinal numbers with "season"
+      { pattern: /\b(\d+)(?:st|nd|rd|th)\s+season\b/gi, replacement: "$1" },
+
+      // Season followed by number
+      { pattern: /\bseason\s+(\d+)/gi, replacement: "$1" },
+
+      // S + number (e.g., "S2", "s2")
+      { pattern: /\bs(\d+)\b/gi, replacement: "$1" },
+
+      // Roman numerals
+      { pattern: /\bseason\s+i\b/gi, replacement: "1" },
+      { pattern: /\bseason\s+ii\b/gi, replacement: "2" },
+      { pattern: /\bseason\s+iii\b/gi, replacement: "3" },
+      { pattern: /\bseason\s+iv\b/gi, replacement: "4" },
+      { pattern: /\bseason\s+v\b/gi, replacement: "5" },
+      { pattern: /\bseason\s+vi\b/gi, replacement: "6" },
+      { pattern: /\bseason\s+vii\b/gi, replacement: "7" },
+      { pattern: /\bseason\s+viii\b/gi, replacement: "8" },
+    ]
+
+    for (const { pattern, replacement } of seasonPatterns) {
+      normalized = normalized.replace(pattern, replacement)
+    }
+
+    // Clean up extra whitespace
+    normalized = normalized.replace(/\s+/g, " ").trim()
+
+    console.log(`[v0] AnimePahe title normalized: "${title}" -> "${normalized}"`)
+
+    return normalized
+  }
+
   async search(query: string): Promise<ScrapedAnime[]> {
     try {
       console.log(`[v0] AnimePahe search starting for query: "${query}"`)
@@ -551,8 +600,10 @@ export class AnimePaheScraper extends BaseScraper {
       const results: ScrapedAnime[] = []
 
       for (const anime of json.data) {
+        const normalizedTitle = this.normalizeAnimePaheTitle(anime.title)
+
         results.push({
-          title: anime.title,
+          title: normalizedTitle,
           slug: anime.session,
           id: anime.session,
           poster: anime.poster,
@@ -618,7 +669,7 @@ export class AnimePaheScraper extends BaseScraper {
         console.log(`[v0] AnimePahe sources request failed with status: ${sourcesRes.status}`)
         throw new Error(`HTTP ${sourcesRes.status}`)
       }
-      
+
       const data = await sourcesRes.json()
       console.log(`[v0] AnimePahe sources response:`, JSON.stringify(data, null, 2))
 
@@ -642,7 +693,9 @@ export class AnimePaheScraper extends BaseScraper {
       if (!selectedSource) {
         console.log(`[v0] AnimePahe: ${resolution}p not found, using highest quality`)
         // Sort by resolution descending and pick the first non-dub, or first overall
-        const sortedSources = [...data.sources].sort((a: any, b: any) => parseInt(b.resolution) - parseInt(a.resolution))
+        const sortedSources = [...data.sources].sort(
+          (a: any, b: any) => Number.parseInt(b.resolution) - Number.parseInt(a.resolution),
+        )
         selectedSource = sortedSources.find((s: any) => !s.isDub) || sortedSources[0]
       }
 
@@ -669,18 +722,128 @@ export class AnimePaheScraper extends BaseScraper {
 }
 
 /** -------------------------
+ * Unity (AnimeUnity) Scraper
+ * ------------------------- */
+export class UnityScraper extends BaseScraper {
+  private readonly API_BASE = "https://resulting-odelinda-hachi-api-1bf0eae9.koyeb.app"
+
+  async search(query: string): Promise<ScrapedAnime[]> {
+    try {
+      console.log(`[v0] Unity search starting for query: "${query}"`)
+      const url = `${this.API_BASE}/search?title=${encodeURIComponent(query)}`
+      console.log(`[v0] Unity search URL: ${url}`)
+
+      const res = await this.fetchWithTimeout(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const json = await res.json()
+      console.log(`[v0] Unity search response: ${json.length} results`)
+
+      if (!Array.isArray(json)) {
+        console.log("[v0] Unity: response is not an array")
+        return []
+      }
+
+      const results: ScrapedAnime[] = []
+
+      for (const anime of json) {
+        results.push({
+          title: anime.title_en || anime.title_it || "Unknown",
+          slug: anime.slug,
+          id: String(anime.id),
+          poster: anime.thumbnail,
+          description: anime.plot || `${anime.type} - ${anime.status} - Score: ${anime.score}`,
+          source: "Unity",
+        })
+      }
+
+      console.log(`[v0] Unity search completed: ${results.length} results`)
+      return results
+    } catch (err) {
+      console.error("[v0] Unity search error:", err)
+      return []
+    }
+  }
+
+  async getEpisodes(animeId: string): Promise<ScrapedEpisode[]> {
+    try {
+      console.log(`[v0] Unity getEpisodes starting for ID: "${animeId}"`)
+      const url = `${this.API_BASE}/episodes?anime_id=${animeId}`
+      console.log(`[v0] Unity episodes URL: ${url}`)
+
+      const res = await this.fetchWithTimeout(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const json = await res.json()
+      console.log(`[v0] Unity episodes response:`, json)
+
+      if (!json.episodes || !Array.isArray(json.episodes)) {
+        console.log("[v0] Unity: no episodes array found")
+        return []
+      }
+
+      const episodes: ScrapedEpisode[] = []
+
+      for (const ep of json.episodes) {
+        const epNum = Number.parseInt(ep.number)
+        if (!isNaN(epNum)) {
+          episodes.push({
+            episode_number: epNum,
+            id: String(ep.episode_id),
+            url: `${this.API_BASE}/embed?episode_id=${ep.episode_id}`,
+          })
+        }
+      }
+
+      const sortedEpisodes = episodes.sort((a, b) => a.episode_number - b.episode_number)
+      console.log(`[v0] Unity getEpisodes completed: ${sortedEpisodes.length} episodes`)
+      return sortedEpisodes
+    } catch (err) {
+      console.error("[v0] Unity episodes error:", err)
+      return []
+    }
+  }
+
+  async getStreamUrl(episodeId: string): Promise<ScrapedStream | null> {
+    try {
+      console.log(`[v0] Unity getStreamUrl starting for ID: "${episodeId}"`)
+
+      // The stream URL is directly the embed endpoint with episode_id
+      const streamUrl = `${this.API_BASE}/embed?episode_id=${episodeId}`
+      console.log(`[v0] Unity stream URL: ${streamUrl}`)
+
+      return {
+        stream_url: streamUrl,
+        embed: `<video 
+  src="${streamUrl}" 
+  class="w-full h-full" 
+  controls 
+  playsinline 
+  preload="metadata" 
+  autoplay>
+</video>`,
+        provider: "Unity",
+      }
+    } catch (err) {
+      console.error("[v0] Unity stream error:", err)
+      return null
+    }
+  }
+}
+
+/** -------------------------
  * Aggregated Search & Episodes
  * ------------------------- */
 export async function searchAnime(query: string): Promise<ScrapedAnime[]> {
   const awScraper = new AnimeWorldScraper()
   const asScraper = new AnimeSaturnScraper()
   const apScraper = new AnimePaheScraper()
-  const [awResults, asResults, apResults] = await Promise.all([
+  const auScraper = new UnityScraper() // Added Unity scraper
+  const [awResults, asResults, apResults, auResults] = await Promise.all([
     awScraper.search(query),
     asScraper.search(query),
     apScraper.search(query),
+    auScraper.search(query), // Added Unity search
   ])
-  return aggregateAnime([awResults, asResults, apResults])
+  return aggregateAnime([awResults, asResults, apResults, auResults]) // Include Unity results
 }
 
 export async function getAllEpisodes(anime: ScrapedAnime): Promise<ScrapedEpisode[]> {
@@ -695,6 +858,10 @@ export async function getAllEpisodes(anime: ScrapedAnime): Promise<ScrapedEpisod
       eps = await scraper.getEpisodes(src.id)
     } else if (src.name === "AnimePahe") {
       const scraper = new AnimePaheScraper()
+      eps = await scraper.getEpisodes(src.id)
+    } else if (src.name === "Unity") {
+      // Added Unity handler
+      const scraper = new UnityScraper()
       eps = await scraper.getEpisodes(src.id)
     }
     episodesList.push(eps)

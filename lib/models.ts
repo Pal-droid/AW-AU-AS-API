@@ -38,6 +38,7 @@ export interface StreamResult {
   AnimeWorld: StreamSource
   AnimeSaturn: StreamSource
   AnimePahe?: StreamSource
+  Unity?: StreamSource // Added Unity to StreamResult
 }
 
 export interface SeasonEpisodeSource {
@@ -54,4 +55,43 @@ export interface SeasonEpisode {
 export interface SeasonResult {
   AnimeWorld: SeasonEpisode[]
   AnimeSaturn: Record<string, SeasonEpisode[]> // Season keys like "S1", "S2", etc.
+}
+
+export interface MangaSource {
+  name: string
+  url?: string
+  id: string
+  hash_id?: string
+  slug?: string
+}
+
+export interface MangaSearchResult {
+  title: string
+  description?: string
+  images: {
+    poster?: string
+  }
+  sources: MangaSource[]
+  status?: string
+  type?: string
+  author?: string
+  genres?: string[]
+}
+
+export interface ChapterSource {
+  available: boolean
+  id?: string
+  url?: string
+  title?: string
+  date?: string
+}
+
+export interface ChapterResult {
+  chapter_number: number
+  sources: Record<string, ChapterSource>
+}
+
+export interface PageResult {
+  page_number: number
+  url: string
 }
