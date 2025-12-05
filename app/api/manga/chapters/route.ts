@@ -7,6 +7,8 @@ interface ChapterSource {
   url?: string
   title?: string
   date?: string
+  hash_id?: string
+  slug?: string
 }
 
 interface ChapterResult {
@@ -22,6 +24,7 @@ export async function GET(request: Request) {
 
     // Comix parameters
     const comixHashId = url.searchParams.get("CX") // Comix hash_id
+    const comixSlug = url.searchParams.get("CX_SLUG") // Comix slug (optional, for pages)
 
     // MangaWorld parameters
     const worldId = url.searchParams.get("MW") // MangaWorld manga_id
@@ -31,9 +34,11 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           error: "At least one source parameter is required",
-          usage: "Example: /api/manga/chapters?CX=r67xv or /api/manga/chapters?MW=678&MW_SLUG=toukyou-ghoul",
+          usage:
+            "Example: /api/manga/chapters?CX=r67xv&CX_SLUG=tonikaku-kawaii or /api/manga/chapters?MW=678&MW_SLUG=toukyou-ghoul",
           parameters: {
             CX: "Comix hash_id (e.g., r67xv)",
+            CX_SLUG: "Comix slug (optional, passed through for pages endpoint)",
             MW: "MangaWorld manga_id (e.g., 678)",
             MW_SLUG: "MangaWorld slug (required with MW)",
           },
@@ -42,54 +47,90 @@ export async function GET(request: Request) {
       )
     }
 
-    const episodePromises: Promise<{ source: string; chapters: ScrapedChapter[] }>[] = []
+    let comixChapters: ScrapedChapter[] = []
+    let worldChapters: ScrapedChapter[] = []
 
-    // Comix chapters
+    // Fetch both sources in parallel but handle errors independently
+    const promises: Promise<void>[] = []
+
     if (comixHashId) {
-      const comixScraper = new ComixScraper()
-      episodePromises.push(comixScraper.getChapters(comixHashId).then((chapters) => ({ source: "Comix", chapters })))
-    }
-
-    // MangaWorld chapters
-    if (worldId && worldSlug) {
-      const worldScraper = new MangaWorldScraper()
-      episodePromises.push(
-        worldScraper.getChapters(worldId, worldSlug).then((chapters) => ({ source: "World", chapters })),
+      promises.push(
+        (async () => {
+          try {
+            const comixScraper = new ComixScraper()
+            comixChapters = await comixScraper.getChapters(comixHashId)
+          } catch (err) {
+            console.error("[v0] Comix chapters fetch failed:", err)
+          }
+        })(),
       )
     }
 
-    const results = await Promise.allSettled(episodePromises)
+    if (worldId && worldSlug) {
+      promises.push(
+        (async () => {
+          try {
+            const worldScraper = new MangaWorldScraper()
+            worldChapters = await worldScraper.getChapters(worldId, worldSlug)
+          } catch (err) {
+            console.error("[v0] MangaWorld chapters fetch failed:", err)
+          }
+        })(),
+      )
+    }
+
+    await Promise.all(promises)
 
     // Build chapter map
     const chapterMap = new Map<number, ChapterResult>()
 
-    for (const result of results) {
-      if (result.status !== "fulfilled") continue
-      const { source, chapters } = result.value
+    // Process Comix chapters
+    for (const ch of comixChapters) {
+      if (!chapterMap.has(ch.chapter_number)) {
+        chapterMap.set(ch.chapter_number, {
+          chapter_number: ch.chapter_number,
+          sources: {},
+        })
+      }
 
-      for (const ch of chapters) {
-        if (!chapterMap.has(ch.chapter_number)) {
-          chapterMap.set(ch.chapter_number, {
-            chapter_number: ch.chapter_number,
-            sources: {},
-          })
-        }
+      const entry = chapterMap.get(ch.chapter_number)!
+      entry.sources["Comix"] = {
+        available: true,
+        id: ch.id,
+        url: ch.url,
+        title: ch.title,
+        date: ch.date,
+        hash_id: comixHashId || undefined,
+        slug: comixSlug || undefined,
+      }
+    }
 
-        const entry = chapterMap.get(ch.chapter_number)!
-        entry.sources[source] = {
-          available: true,
-          id: ch.id,
-          url: ch.url,
-          title: ch.title,
-          date: ch.date,
-        }
+    // Process World chapters
+    for (const ch of worldChapters) {
+      if (!chapterMap.has(ch.chapter_number)) {
+        chapterMap.set(ch.chapter_number, {
+          chapter_number: ch.chapter_number,
+          sources: {},
+        })
+      }
+
+      const entry = chapterMap.get(ch.chapter_number)!
+      entry.sources["World"] = {
+        available: true,
+        id: ch.id,
+        url: ch.url,
+        title: ch.title,
+        date: ch.date,
       }
     }
 
     // Add unavailable markers for missing sources
-    const allSources = ["Comix", "World"]
+    const requestedSources: string[] = []
+    if (comixHashId) requestedSources.push("Comix")
+    if (worldId && worldSlug) requestedSources.push("World")
+
     for (const [, entry] of chapterMap) {
-      for (const source of allSources) {
+      for (const source of requestedSources) {
         if (!entry.sources[source]) {
           entry.sources[source] = { available: false }
         }
