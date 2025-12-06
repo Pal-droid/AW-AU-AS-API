@@ -1,9 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { AnimeWorldScraper, AnimeSaturnScraper } from "@/lib/scrapers"
 import type { SeasonResult } from "@/lib/models"
+import { getQueryParams } from "@/lib/query-utils"
 
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams
+  const searchParams = getQueryParams(request)
   const AW = searchParams.get("AW")
   const AS = searchParams.get("AS")
 

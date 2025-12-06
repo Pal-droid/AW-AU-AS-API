@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper, UnityScraper } from "@/lib/scrapers"
 import type { StreamResult } from "@/lib/models"
+import { getQueryParams } from "@/lib/query-utils"
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -20,12 +21,12 @@ export async function GET(request: NextRequest) {
     "Access-Control-Allow-Headers": "Content-Type,User-Agent",
   }
 
-  const searchParams = request.nextUrl.searchParams
+  const searchParams = getQueryParams(request)
   const AW = searchParams.get("AW")
   const AS = searchParams.get("AS")
   const AP = searchParams.get("AP")
   const AP_ANIME = searchParams.get("AP_ANIME")
-  const AU = searchParams.get("AU") // Added Unity parameter
+  const AU = searchParams.get("AU")
   const res = searchParams.get("res")
 
   console.log(

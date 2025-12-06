@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server"
 import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper, UnityScraper } from "@/lib/scrapers"
 import { detectDuplicates } from "@/lib/utils-anime"
+import { getQueryParams } from "@/lib/query-utils"
 
 export async function GET(request: Request) {
   try {
     console.log("[v1] Search endpoint called")
-    console.log("[v1] Request type:", typeof request)
-    console.log("[v1] Request URL:", request?.url)
 
-    // Parse URL and get search params
-    const url = new URL(request.url)
-    const query = url.searchParams.get("q")
+    const searchParams = getQueryParams(request)
+    const query = searchParams.get("q")
 
     console.log("[v1] Query parameter:", query)
 
@@ -30,7 +28,7 @@ export async function GET(request: Request) {
     const animeworldScraper = new AnimeWorldScraper()
     const animesaturnScraper = new AnimeSaturnScraper()
     const animepaheScraper = new AnimePaheScraper()
-    const unityScraper = new UnityScraper() // Added Unity scraper
+    const unityScraper = new UnityScraper()
 
     const [animeworldResults, animesaturnResults, animepaheResults, unityResults] = await Promise.allSettled([
       animeworldScraper.search(query),
@@ -42,7 +40,7 @@ export async function GET(request: Request) {
     const awResults = animeworldResults.status === "fulfilled" ? animeworldResults.value : []
     const asResults = animesaturnResults.status === "fulfilled" ? animesaturnResults.value : []
     const apResults = animepaheResults.status === "fulfilled" ? animepaheResults.value : []
-    const auResults = unityResults.status === "fulfilled" ? unityResults.value : [] // Added Unity results
+    const auResults = unityResults.status === "fulfilled" ? unityResults.value : []
 
     console.log(
       `[v1] Results - AW: ${awResults.length}, AS: ${asResults.length}, AP: ${apResults.length}, AU: ${auResults.length}`,

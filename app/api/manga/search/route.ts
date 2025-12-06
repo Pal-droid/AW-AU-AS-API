@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server"
 import { ComixScraper, MangaWorldScraper, aggregateManga } from "@/lib/manga-scrapers"
+import { getQueryParams } from "@/lib/query-utils"
 
 export async function GET(request: Request) {
   try {
     console.log("[v0] Manga search endpoint called")
 
-    const url = new URL(request.url)
-    const query = url.searchParams.get("q")
+    const searchParams = getQueryParams(request)
+    const query = searchParams.get("q")
+
+    console.log(`[v0] Manga search query: ${query}`)
 
     if (!query || query.trim().length < 2) {
       return NextResponse.json(

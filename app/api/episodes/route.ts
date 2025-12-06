@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper, UnityScraper } from "@/lib/scrapers"
 import type { EpisodeResult } from "@/lib/models"
+import { getQueryParams } from "@/lib/query-utils"
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -16,7 +17,7 @@ export async function OPTIONS() {
 }
 
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams
+  const searchParams = getQueryParams(request)
   const AW = searchParams.get("AW")
   const AS = searchParams.get("AS")
   const AP = searchParams.get("AP")

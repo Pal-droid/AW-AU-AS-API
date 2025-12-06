@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { ComixScraper, MangaWorldScraper, type ScrapedChapter } from "@/lib/manga-scrapers"
+import { getQueryParams } from "@/lib/query-utils"
 
 interface ChapterSource {
   available: boolean
@@ -20,15 +21,19 @@ export async function GET(request: Request) {
   try {
     console.log("[v0] Manga chapters endpoint called")
 
-    const url = new URL(request.url)
+    const searchParams = getQueryParams(request)
 
     // Comix parameters
-    const comixHashId = url.searchParams.get("CX") // Comix hash_id
-    const comixSlug = url.searchParams.get("CX_SLUG") // Comix slug (optional, for pages)
+    const comixHashId = searchParams.get("CX")
+    const comixSlug = searchParams.get("CX_SLUG")
 
     // MangaWorld parameters
-    const worldId = url.searchParams.get("MW") // MangaWorld manga_id
-    const worldSlug = url.searchParams.get("MW_SLUG") // MangaWorld slug
+    const worldId = searchParams.get("MW")
+    const worldSlug = searchParams.get("MW_SLUG")
+
+    console.log(
+      `[v0] Manga chapters params - CX: ${comixHashId}, CX_SLUG: ${comixSlug}, MW: ${worldId}, MW_SLUG: ${worldSlug}`,
+    )
 
     if (!comixHashId && !worldId) {
       return NextResponse.json(

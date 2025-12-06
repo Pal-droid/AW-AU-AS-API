@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { ComixScraper, MangaWorldScraper, type ScrapedPage } from "@/lib/manga-scrapers"
+import { getQueryParams } from "@/lib/query-utils"
 
 interface PageResult {
   source: string
@@ -10,16 +11,20 @@ export async function GET(request: Request) {
   try {
     console.log("[v0] Manga pages endpoint called")
 
-    const url = new URL(request.url)
+    const searchParams = getQueryParams(request)
 
     // Comix parameters
-    const comixHashId = url.searchParams.get("CX_HASH") // hash_id
-    const comixSlug = url.searchParams.get("CX_SLUG") // slug
-    const comixChapterId = url.searchParams.get("CX_CHAPTER") // chapter_id
-    const comixChapterNum = url.searchParams.get("CX_NUM") // chapter number
+    const comixHashId = searchParams.get("CX_HASH")
+    const comixSlug = searchParams.get("CX_SLUG")
+    const comixChapterId = searchParams.get("CX_CHAPTER")
+    const comixChapterNum = searchParams.get("CX_NUM")
 
     // MangaWorld parameters
-    const worldChapterUrl = url.searchParams.get("MW") // Full chapter URL
+    const worldChapterUrl = searchParams.get("MW")
+
+    console.log(
+      `[v0] Manga pages params - CX_HASH: ${comixHashId}, CX_SLUG: ${comixSlug}, CX_CHAPTER: ${comixChapterId}, CX_NUM: ${comixChapterNum}, MW: ${worldChapterUrl}`,
+    )
 
     if (!worldChapterUrl && !(comixHashId && comixSlug && comixChapterId && comixChapterNum)) {
       return NextResponse.json(
