@@ -48,6 +48,7 @@ class BaseMangaScraper {
       const fetchOptions: RequestInit = {
         headers: this.headers,
         signal: controller.signal,
+        redirect: "follow", // Added redirect following for MangaWorld
       }
 
       const response = await fetch(url, fetchOptions)

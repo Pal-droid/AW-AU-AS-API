@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper, UnityScraper } from "@/lib/scrapers"
+import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper, UnityScraper, HeavenScraper } from "@/lib/scrapers"
 import { detectDuplicates } from "@/lib/utils-anime"
 import { getQueryParams } from "@/lib/query-utils"
 
@@ -29,24 +29,28 @@ export async function GET(request: Request) {
     const animesaturnScraper = new AnimeSaturnScraper()
     const animepaheScraper = new AnimePaheScraper()
     const unityScraper = new UnityScraper()
+    const heavenScraper = new HeavenScraper() // Added Heaven scraper
 
-    const [animeworldResults, animesaturnResults, animepaheResults, unityResults] = await Promise.allSettled([
-      animeworldScraper.search(query),
-      animesaturnScraper.search(query),
-      animepaheScraper.search(query),
-      unityScraper.search(query),
-    ])
+    const [animeworldResults, animesaturnResults, animepaheResults, unityResults, heavenResults] =
+      await Promise.allSettled([
+        animeworldScraper.search(query),
+        animesaturnScraper.search(query),
+        animepaheScraper.search(query),
+        unityScraper.search(query),
+        heavenScraper.search(query), // Added Heaven search
+      ])
 
     const awResults = animeworldResults.status === "fulfilled" ? animeworldResults.value : []
     const asResults = animesaturnResults.status === "fulfilled" ? animesaturnResults.value : []
     const apResults = animepaheResults.status === "fulfilled" ? animepaheResults.value : []
     const auResults = unityResults.status === "fulfilled" ? unityResults.value : []
+    const hsResults = heavenResults.status === "fulfilled" ? heavenResults.value : [] // Extract Heaven results
 
     console.log(
-      `[v1] Results - AW: ${awResults.length}, AS: ${asResults.length}, AP: ${apResults.length}, AU: ${auResults.length}`,
+      `[v1] Results - AW: ${awResults.length}, AS: ${asResults.length}, AP: ${apResults.length}, AU: ${auResults.length}, HS: ${hsResults.length}`,
     )
 
-    const unifiedResults = await detectDuplicates(awResults, asResults, apResults, auResults)
+    const unifiedResults = await detectDuplicates(awResults, asResults, apResults, auResults, hsResults)
 
     console.log(`[v1] Unified results: ${unifiedResults.length}`)
 

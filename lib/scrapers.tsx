@@ -10,6 +10,7 @@ export interface ScrapedAnime {
   description?: string
   source: string
   sources?: { name: string; slug: string; id: string }[]
+  altTitle?: string
 }
 
 export interface ScrapedEpisode {
@@ -137,6 +138,7 @@ export class AnimeWorldScraper extends BaseScraper {
         if (!nameEl.length) return
         const relativeUrl = nameEl.attr("href")
         const title = nameEl.text().trim()
+        const altTitle = nameEl.attr("data-jtitle")?.trim() || undefined
         if (!relativeUrl) return
 
         let animeId: string | null = null
@@ -148,7 +150,8 @@ export class AnimeWorldScraper extends BaseScraper {
         let posterUrl = imgEl.attr("src")
         if (posterUrl && !posterUrl.startsWith("http")) posterUrl = new URL(posterUrl, this.BASE_URL).href
 
-        if (animeId) results.push({ title, slug: animeId, id: animeId, poster: posterUrl, source: "AnimeWorld" })
+        if (animeId)
+          results.push({ title, slug: animeId, id: animeId, poster: posterUrl, source: "AnimeWorld", altTitle })
       })
 
       return results
@@ -830,20 +833,162 @@ export class UnityScraper extends BaseScraper {
 }
 
 /** -------------------------
- * Aggregated Search & Episodes
+ * Heaven Scraper (animeheaven.me)
  * ------------------------- */
+export class HeavenScraper extends BaseScraper {
+  private readonly BASE_URL = "https://animeheaven.me"
+
+  async search(query: string): Promise<ScrapedAnime[]> {
+    try {
+      const url = `${this.BASE_URL}/search.php?s=${encodeURIComponent(query)}`
+      const res = await this.fetchWithTimeout(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const html = await res.text()
+      const $ = cheerio.load(html)
+      const results: ScrapedAnime[] = []
+
+      $(".similarimg .p1").each((_, el) => {
+        const linkEl = $(el).find("a").first()
+        const href = linkEl.attr("href")
+        if (!href) return
+
+        const imgEl = $(el).find("img.coverimg")
+        const title = imgEl.attr("alt")?.trim() || $(el).find(".similarname a").text().trim()
+        if (!title) return
+
+        // Extract anime ID from href like "anime.php?XYZ123"
+        const idMatch = href.match(/anime\.php\?(.+)$/)
+        const animeId = idMatch ? idMatch[1] : href
+
+        let posterUrl = imgEl.attr("src")
+        if (posterUrl && !posterUrl.startsWith("http")) {
+          posterUrl = new URL(posterUrl, this.BASE_URL).href
+        }
+
+        results.push({
+          title,
+          slug: animeId,
+          id: animeId,
+          url: `${this.BASE_URL}/${href}`,
+          poster: posterUrl,
+          source: "Heaven",
+        })
+      })
+
+      return results
+    } catch (err) {
+      console.error("Heaven search error:", err)
+      return []
+    }
+  }
+
+  async getEpisodes(animeId: string): Promise<ScrapedEpisode[]> {
+    try {
+      const url = `${this.BASE_URL}/anime.php?${animeId}`
+      const res = await this.fetchWithTimeout(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const html = await res.text()
+      const $ = cheerio.load(html)
+      const episodes: ScrapedEpisode[] = []
+
+      // Episodes have structure: <a href='gate.php' id='HASH' onclick='gate("HASH")'>
+      $("a[onclick^='gate(']").each((_, el) => {
+        const $el = $(el)
+        const hashId = $el.attr("id")
+        if (!hashId) return
+
+        // Extract episode number from watch2 div
+        const epNumText = $el.find(".watch2").text().trim()
+        const epNum = Number.parseInt(epNumText)
+        if (!epNum || isNaN(epNum)) return
+
+        episodes.push({
+          episode_number: epNum,
+          id: `${animeId}|${hashId}`, // Store both animeId and hash for stream fetching
+          url: `${this.BASE_URL}/gate.php`,
+        })
+      })
+
+      return episodes.sort((a, b) => a.episode_number - b.episode_number)
+    } catch (err) {
+      console.error("Heaven episodes error:", err)
+      return []
+    }
+  }
+
+  async getStreamUrl(episodeId: string): Promise<ScrapedStream | null> {
+    try {
+      // episodeId format: "animeId|hashId"
+      const [animeId, hashId] = episodeId.split("|")
+      if (!animeId || !hashId) {
+        console.error("Heaven: Invalid episode ID format")
+        return null
+      }
+
+      // Fetch the episode page with the hash as a cookie
+      const url = `${this.BASE_URL}/anime.php?${animeId}`
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout)
+
+      try {
+        const res = await fetch(url, {
+          headers: {
+            ...this.headers,
+            Cookie: `hash=${hashId}`,
+          },
+          signal: controller.signal,
+        })
+        clearTimeout(timeoutId)
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const html = await res.text()
+        const $ = cheerio.load(html)
+
+        // Extract first mp4 source from video element
+        const videoSource = $("video#vid source[type='video/mp4']").first().attr("src")
+
+        if (videoSource) {
+          const fullUrl = videoSource.startsWith("http") ? videoSource : new URL(videoSource, this.BASE_URL).href
+          return {
+            stream_url: fullUrl,
+            embed: `<video 
+    src="${fullUrl}" 
+    class="w-full h-full" 
+    controls 
+    playsinline 
+    preload="metadata" 
+    autoplay>
+</video>`,
+            provider: "Heaven",
+          }
+        }
+
+        return null
+      } catch (error) {
+        clearTimeout(timeoutId)
+        throw error
+      }
+    } catch (err) {
+      console.error("Heaven stream error:", err)
+      return null
+    }
+  }
+}
+
 export async function searchAnime(query: string): Promise<ScrapedAnime[]> {
   const awScraper = new AnimeWorldScraper()
   const asScraper = new AnimeSaturnScraper()
   const apScraper = new AnimePaheScraper()
   const auScraper = new UnityScraper() // Added Unity scraper
-  const [awResults, asResults, apResults, auResults] = await Promise.all([
+  const hsScraper = new HeavenScraper() // Added Heaven scraper
+  const [awResults, asResults, apResults, auResults, hsResults] = await Promise.all([
     awScraper.search(query),
     asScraper.search(query),
     apScraper.search(query),
     auScraper.search(query), // Added Unity search
+    hsScraper.search(query), // Added Heaven search
   ])
-  return aggregateAnime([awResults, asResults, apResults, auResults]) // Include Unity results
+  return aggregateAnime([awResults, asResults, apResults, auResults, hsResults]) // Include Heaven results
 }
 
 export async function getAllEpisodes(anime: ScrapedAnime): Promise<ScrapedEpisode[]> {
@@ -860,8 +1005,10 @@ export async function getAllEpisodes(anime: ScrapedAnime): Promise<ScrapedEpisod
       const scraper = new AnimePaheScraper()
       eps = await scraper.getEpisodes(src.id)
     } else if (src.name === "Unity") {
-      // Added Unity handler
       const scraper = new UnityScraper()
+      eps = await scraper.getEpisodes(src.id)
+    } else if (src.name === "Heaven") {
+      const scraper = new HeavenScraper()
       eps = await scraper.getEpisodes(src.id)
     }
     episodesList.push(eps)
