@@ -218,7 +218,7 @@ export async function shouldMatch(
 }
 
 /**
- * Async duplicate detection and merging for AnimeWorld + AnimeSaturn + AnimePahe + Unity + Heaven results
+ * Async duplicate detection and merging for AnimeWorld + AnimeSaturn + AnimePahe + Unity results
  */
 export async function detectDuplicates(
   animeworldResults: any[],
@@ -672,6 +672,7 @@ export async function detectDuplicates(
     }
   }
 
+  // Add remaining unmatched Heaven results
   for (let i = 0; i < heavenResults.length; i++) {
     if (!usedHeaven.has(i)) {
       const hsResult = heavenResults[i]

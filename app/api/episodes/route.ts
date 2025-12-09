@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper, UnityScraper, HeavenScraper } from "@/lib/scrapers"
+import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper, UnityScraper } from "@/lib/scrapers"
 import type { EpisodeResult } from "@/lib/models"
 import { getQueryParams } from "@/lib/query-utils"
 
@@ -22,14 +22,13 @@ export async function GET(request: NextRequest) {
   const AS = searchParams.get("AS")
   const AP = searchParams.get("AP")
   const AU = searchParams.get("AU")
-  const HS = searchParams.get("HS") // Added Heaven parameter
 
-  console.log(`[v0] Episodes endpoint called with AW: ${AW}, AS: ${AS}, AP: ${AP}, AU: ${AU}, HS: ${HS}`)
+  console.log(`[v0] Episodes endpoint called with AW: ${AW}, AS: ${AS}, AP: ${AP}, AU: ${AU}`)
 
-  if (!AW && !AS && !AP && !AU && !HS) {
+  if (!AW && !AS && !AP && !AU) {
     console.log("[v0] No IDs provided, returning error")
     return NextResponse.json(
-      { error: "At least one source ID (AW, AS, AP, AU, or HS) must be provided" },
+      { error: "At least one source ID (AW, AS, AP, or AU) must be provided" },
       { status: 400, headers: CORS_HEADERS },
     )
   }
@@ -40,13 +39,11 @@ export async function GET(request: NextRequest) {
     const animesaturnScraper = new AnimeSaturnScraper()
     const animepaheScraper = new AnimePaheScraper()
     const unityScraper = new UnityScraper()
-    const heavenScraper = new HeavenScraper() // Added Heaven scraper
 
     if (AW) tasks.push(animeworldScraper.getEpisodes(AW))
     if (AS) tasks.push(animesaturnScraper.getEpisodes(AS))
     if (AP) tasks.push(animepaheScraper.getEpisodes(AP))
     if (AU) tasks.push(unityScraper.getEpisodes(AU))
-    if (HS) tasks.push(heavenScraper.getEpisodes(HS)) // Added Heaven task
 
     const results = await Promise.allSettled(tasks)
 
@@ -98,21 +95,10 @@ export async function GET(request: NextRequest) {
         if (!(epNum in allEpisodes)) allEpisodes[epNum] = { episode_number: epNum, sources: {} }
         allEpisodes[epNum].sources["Unity"] = { available: true, url: ep.url || ep.stream_url, id: ep.id }
       }
-      taskIndex++
-    } else if (AU) {
-      taskIndex++
-    }
-
-    if (HS && results[taskIndex]?.status === "fulfilled") {
-      for (const ep of results[taskIndex].value) {
-        const epNum = ep.episode_number
-        if (!(epNum in allEpisodes)) allEpisodes[epNum] = { episode_number: epNum, sources: {} }
-        allEpisodes[epNum].sources["Heaven"] = { available: true, url: ep.url || ep.stream_url, id: ep.id }
-      }
     }
 
     for (const epData of Object.values(allEpisodes)) {
-      for (const source of ["AnimeWorld", "AnimeSaturn", "AnimePahe", "Unity", "Heaven"]) {
+      for (const source of ["AnimeWorld", "AnimeSaturn", "AnimePahe", "Unity"]) {
         if (!(source in epData.sources)) epData.sources[source] = { available: false, url: undefined, id: undefined }
       }
     }

@@ -832,216 +832,18 @@ export class UnityScraper extends BaseScraper {
   }
 }
 
-/** -------------------------
- * Heaven Scraper (animeheaven.me)
- * ------------------------- */
-export class HeavenScraper extends BaseScraper {
-  private readonly BASE_URL = "https://corsproxy.io/?url=https://animeheaven.me"
-
-  private normalizeHeavenTitle(title: string): string {
-    let normalized = title
-
-    const seasonPatterns = [
-      // English ordinals
-      { pattern: /\bfirst\s+season\b/gi, replacement: "1" },
-      { pattern: /\bsecond\s+season\b/gi, replacement: "2" },
-      { pattern: /\bthird\s+season\b/gi, replacement: "3" },
-      { pattern: /\bfourth\s+season\b/gi, replacement: "4" },
-      { pattern: /\bfifth\s+season\b/gi, replacement: "5" },
-      { pattern: /\bsixth\s+season\b/gi, replacement: "6" },
-      { pattern: /\bseventh\s+season\b/gi, replacement: "7" },
-      { pattern: /\beighth\s+season\b/gi, replacement: "8" },
-      { pattern: /\bninth\s+season\b/gi, replacement: "9" },
-      { pattern: /\btenth\s+season\b/gi, replacement: "10" },
-
-      // Ordinal numbers with "season"
-      { pattern: /\b(\d+)(?:st|nd|rd|th)\s+season\b/gi, replacement: "$1" },
-
-      // Season followed by number
-      { pattern: /\bseason\s+(\d+)/gi, replacement: "$1" },
-
-      // S + number (e.g., "S2", "s2")
-      { pattern: /\bs(\d+)\b/gi, replacement: "$1" },
-
-      // Roman numerals
-      { pattern: /\bseason\s+i\b/gi, replacement: "1" },
-      { pattern: /\bseason\s+ii\b/gi, replacement: "2" },
-      { pattern: /\bseason\s+iii\b/gi, replacement: "3" },
-      { pattern: /\bseason\s+iv\b/gi, replacement: "4" },
-      { pattern: /\bseason\s+v\b/gi, replacement: "5" },
-      { pattern: /\bseason\s+vi\b/gi, replacement: "6" },
-      { pattern: /\bseason\s+vii\b/gi, replacement: "7" },
-      { pattern: /\bseason\s+viii\b/gi, replacement: "8" },
-    ]
-
-    for (const { pattern, replacement } of seasonPatterns) {
-      normalized = normalized.replace(pattern, replacement)
-    }
-
-    normalized = normalized.replace(/\s+/g, " ").trim()
-
-    // console.log(`[v0] Heaven title normalized: "${title}" -> "${normalized}"`)
-
-    return normalized
-  }
-
-  async search(query: string): Promise<ScrapedAnime[]> {
-    try {
-      const url = `${this.BASE_URL}/search.php?s=${encodeURIComponent(query)}`
-      const res = await this.fetchWithTimeout(url)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const html = await res.text()
-      const results: ScrapedAnime[] = []
-
-      const regex = /<div class='similarimg'>.*?<a href='(anime\.php\?.*?)'><img.*?alt='(.*?)'/gs
-      let match
-      while ((match = regex.exec(html)) !== null) {
-        const href = match[1]
-        const rawTitle = match[2].replace(/&#039;/g, "'")
-        const title = this.normalizeHeavenTitle(rawTitle)
-        const animeId = href.replace("anime.php?", "")
-
-        results.push({
-          title,
-          slug: animeId,
-          id: animeId,
-          url: `${this.BASE_URL}/${href}`,
-          source: "Heaven",
-        })
-      }
-
-      return results
-    } catch (err) {
-      console.error("Heaven search error:", err)
-      return []
-    }
-  }
-
-  async getEpisodes(animeId: string): Promise<ScrapedEpisode[]> {
-    try {
-      const url = `${this.BASE_URL}/anime.php?${animeId}`
-      const res = await this.fetchWithTimeout(url)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const html = await res.text()
-      const $ = cheerio.load(html)
-      const episodes: ScrapedEpisode[] = []
-
-      // Look for anchors calling the gate function
-      const gateLinks = $("a[onclick^='gate(']")
-      console.log("[v0] Found gate links:", gateLinks.length)
-
-      gateLinks.each((_, el) => {
-        const $el = $(el)
-        
-        // FIX: Extract hash from the onclick string, NOT the element ID
-        const onclick = $el.attr("onclick") || "";
-        const hashMatch = onclick.match(/gate\(['"]([^'"]+)['"]\)/);
-        const hashId = hashMatch ? hashMatch[1] : null;
-
-        if (!hashId) return
-
-        // Extract episode number from watch2 div
-        const epNumText = $el.find(".watch2").text().trim()
-        const epNum = Number.parseInt(epNumText)
-        if (!epNum || isNaN(epNum)) return
-
-        episodes.push({
-          episode_number: epNum,
-          id: `${animeId}|${hashId}`,
-          url: `${this.BASE_URL}/gate.php`,
-        })
-      })
-
-      console.log("[v0] Total episodes found:", episodes.length)
-      return episodes.sort((a, b) => a.episode_number - b.episode_number)
-    } catch (err) {
-      console.error("Heaven episodes error:", err)
-      return []
-    }
-  }
-
-  async getStreamUrl(episodeId: string): Promise<ScrapedStream | null> {
-    try {
-      const [animeId, hashId] = episodeId.split("|")
-      if (!animeId || !hashId) {
-        console.error("Heaven: Invalid episode ID format")
-        return null
-      }
-
-      const url = `${this.BASE_URL}/gate.php`
-      
-      // FIX: The referer must be exactly "anime.php?" without the ID for some legacy checks
-      const referer = `${this.BASE_URL}/anime.php?`
-
-      console.log("[v0] Heaven getStreamUrl - Cookie key:", hashId)
-
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), this.timeout)
-
-      try {
-        const res = await fetch(url, {
-          headers: {
-            "Cookie": `key=${hashId}`,
-            "Referer": referer,
-            "User-Agent":
-              "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
-          },
-          signal: controller.signal,
-        })
-        clearTimeout(timeoutId)
-
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const html = await res.text()
-
-        // FIX: Simple regex to match the first source src
-        // The previous code had a scope error (using m[1] outside loop)
-        const mp4Regex = /<source\s+src=['"](https?:\/\/.*?\.mp4\?[^'"]+)['"]/
-        const match = html.match(mp4Regex)
-
-        if (match && match[1]) {
-          const fullUrl = match[1]
-          console.log("[v0] Heaven first MP4 URL:", fullUrl);
-          
-          return {
-            stream_url: fullUrl,
-            embed: `<video 
-    src="${fullUrl}" 
-    class="w-full h-full" 
-    controls 
-    playsinline 
-    preload="metadata" 
-    autoplay>
-</video>`,
-            provider: "Heaven",
-          }
-        }
-
-        return null
-      } catch (error) {
-        clearTimeout(timeoutId)
-        throw error
-      }
-    } catch (err) {
-      console.error("Heaven stream error:", err)
-      return null
-    }
-  }
-}
-
 export async function searchAnime(query: string): Promise<ScrapedAnime[]> {
   const awScraper = new AnimeWorldScraper()
   const asScraper = new AnimeSaturnScraper()
   const apScraper = new AnimePaheScraper()
-  const auScraper = new UnityScraper() // Added Unity scraper
-  const hsScraper = new HeavenScraper() // Added Heaven scraper
-  const [awResults, asResults, apResults, auResults, hsResults] = await Promise.all([
+  const auScraper = new UnityScraper()
+  const [awResults, asResults, apResults, auResults] = await Promise.all([
     awScraper.search(query),
     asScraper.search(query),
     apScraper.search(query),
-    auScraper.search(query), // Added Unity search
-    hsScraper.search(query), // Added Heaven search
+    auScraper.search(query),
   ])
-  return aggregateAnime([awResults, asResults, apResults, auResults, hsResults]) // Include Heaven results
+  return aggregateAnime([awResults, asResults, apResults, auResults])
 }
 
 export async function getAllEpisodes(anime: ScrapedAnime): Promise<ScrapedEpisode[]> {
@@ -1059,9 +861,6 @@ export async function getAllEpisodes(anime: ScrapedAnime): Promise<ScrapedEpisod
       eps = await scraper.getEpisodes(src.id)
     } else if (src.name === "Unity") {
       const scraper = new UnityScraper()
-      eps = await scraper.getEpisodes(src.id)
-    } else if (src.name === "Heaven") {
-      const scraper = new HeavenScraper()
       eps = await scraper.getEpisodes(src.id)
     }
     episodesList.push(eps)

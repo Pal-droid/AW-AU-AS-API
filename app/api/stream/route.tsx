@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper, UnityScraper, HeavenScraper } from "@/lib/scrapers"
+import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper, UnityScraper } from "@/lib/scrapers"
 import type { StreamResult } from "@/lib/models"
 import { getQueryParams } from "@/lib/query-utils"
 
@@ -27,16 +27,15 @@ export async function GET(request: NextRequest) {
   const AP = searchParams.get("AP")
   const AP_ANIME = searchParams.get("AP_ANIME")
   const AU = searchParams.get("AU")
-  const HS = searchParams.get("HS") // Added Heaven parameter
   const res = searchParams.get("res")
 
   console.log(
-    `[v0] Stream endpoint called with AW: ${AW}, AS: ${AS}, AP: ${AP}, AP_ANIME: ${AP_ANIME}, AU: ${AU}, HS: ${HS}, res: ${res}`,
+    `[v0] Stream endpoint called with AW: ${AW}, AS: ${AS}, AP: ${AP}, AP_ANIME: ${AP_ANIME}, AU: ${AU}, res: ${res}`,
   )
 
-  if (!AW && !AS && !AP && !AU && !HS) {
+  if (!AW && !AS && !AP && !AU) {
     return NextResponse.json(
-      { error: "At least one episode ID (AW, AS, AP, AU, or HS) must be provided" },
+      { error: "At least one episode ID (AW, AS, AP, or AU) must be provided" },
       { status: 400, headers },
     )
   }
@@ -62,7 +61,6 @@ export async function GET(request: NextRequest) {
     const animesaturnScraper = new AnimeSaturnScraper()
     const animepaheScraper = new AnimePaheScraper()
     const unityScraper = new UnityScraper()
-    const heavenScraper = new HeavenScraper() // Added Heaven scraper
 
     if (AW) {
       console.log(`[v0] Adding AnimeWorld stream task for ID: ${AW}`)
@@ -84,11 +82,6 @@ export async function GET(request: NextRequest) {
       tasks.push(unityScraper.getStreamUrl(AU))
       taskSources.push("Unity")
     }
-    if (HS) {
-      console.log(`[v0] Adding Heaven stream task for ID: ${HS}`)
-      tasks.push(heavenScraper.getStreamUrl(HS))
-      taskSources.push("Heaven")
-    }
 
     console.log(`[v0] Running ${tasks.length} stream scraping tasks`)
     const results = await Promise.allSettled(tasks)
@@ -97,13 +90,11 @@ export async function GET(request: NextRequest) {
     const streamResult: StreamResult & {
       AnimePahe?: { available: boolean; stream_url?: string; embed?: string; provider?: string }
       Unity?: { available: boolean; stream_url?: string; embed?: string; provider?: string }
-      Heaven?: { available: boolean; stream_url?: string; embed?: string; provider?: string }
     } = {
       AnimeWorld: { available: false, stream_url: undefined, embed: undefined },
       AnimeSaturn: { available: false, stream_url: undefined, embed: undefined, provider: undefined },
       AnimePahe: { available: false, stream_url: undefined, embed: undefined, provider: undefined },
       Unity: { available: false, stream_url: undefined, embed: undefined, provider: undefined },
-      Heaven: { available: false, stream_url: undefined, embed: undefined, provider: undefined }, // Added Heaven
     }
 
     for (let i = 0; i < results.length; i++) {
@@ -198,26 +189,6 @@ export async function GET(request: NextRequest) {
     autoplay>
 </video>`,
             provider: provider || "Unity",
-          }
-        } else if (source === "Heaven") {
-          const url = typeof data === "string" ? data : data.stream_url
-          const embedHtml = typeof data === "object" ? data.embed : undefined
-          const provider = typeof data === "object" ? data.provider : undefined
-
-          streamResult.Heaven = {
-            available: true,
-            stream_url: url,
-            embed:
-              embedHtml ||
-              `<video 
-    src="${url}" 
-    class="w-full h-full" 
-    controls 
-    playsinline 
-    preload="metadata" 
-    autoplay>
-</video>`,
-            provider: provider || "Heaven",
           }
         }
       } else if (result.status === "rejected") {
