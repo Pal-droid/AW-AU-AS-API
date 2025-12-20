@@ -728,7 +728,7 @@ export class AnimePaheScraper extends BaseScraper {
  * Unity (AnimeUnity) Scraper
  * ------------------------- */
 export class UnityScraper extends BaseScraper {
-  private readonly API_BASE = "https://resulting-odelinda-hachi-api-1bf0eae9.koyeb.app"
+  private readonly API_BASE = "https://delicate-rubia-hachu-9b0ceeb1.koyeb.app"
 
   async search(query: string): Promise<ScrapedAnime[]> {
     try {
