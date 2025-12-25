@@ -195,36 +195,40 @@ export class ComixScraper extends BaseMangaScraper {
       const res = await this.fetchWithTimeout(url)
       
       if (!res.ok) {
-        return {
-          source: "Comix",
-          error: `HTTP ${res.status}`,
-          requested_url: url,
-          pages: []
-        }
+        return { source: "Comix", error: `HTTP ${res.status}`, requested_url: url, pages: [] }
       }
 
       const html = await res.text()
-      // Regex updated to handle objects in the images array
-      const imagesMatch = html.match(/"images"\s*:\s*(\[[\s\S]*?\])/)
+
+      /**
+       * FIX: Next.js Stream Parsing
+       * Comix uses Next.js streaming where JSON is inside a string with escaped quotes (\").
+       * We look for the "images" key with optional escaped quotes and capture the array.
+       */
+      const imagesMatch = html.match(/\\"images\\"\s*:\s*(\[[\s\S]*?\])/)
 
       if (!imagesMatch) {
-        console.warn(`[v0] Comix: No images found at ${url}`)
+        console.warn(`[v0] Comix: Regex failed to find images array at ${url}`)
         return {
           source: "Comix",
-          error: "No images found in page source",
+          error: "Images array not found in script payload",
           requested_url: url,
           pages: []
         }
       }
 
-      const imagesData = JSON.parse(imagesMatch[1])
+      // 1. Clean escaped quotes: \"url\" -> "url"
+      // 2. Parse the result
+      const cleanedJson = imagesMatch[1].replace(/\\"/g, '"')
+      const imagesData = JSON.parse(cleanedJson)
+      
       const pages: ScrapedPage[] = imagesData.map((item: any, index: number) => ({
         page_number: index + 1,
         url: item.url,
       }))
 
       if (pages.length === 0) {
-        return { source: "Comix", error: "Empty image array", requested_url: url, pages: [] }
+        return { source: "Comix", error: "Parsed image array is empty", requested_url: url, pages: [] }
       }
 
       return pages
@@ -232,7 +236,7 @@ export class ComixScraper extends BaseMangaScraper {
       console.error(`[v0] Comix pages error:`, err)
       return {
         source: "Comix",
-        error: err.message || "Unknown error",
+        error: err.message || "Unknown error during parsing",
         requested_url: url,
         pages: []
       }
