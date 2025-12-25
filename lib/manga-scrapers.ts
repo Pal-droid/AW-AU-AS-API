@@ -48,7 +48,7 @@ class BaseMangaScraper {
       const fetchOptions: RequestInit = {
         headers: this.headers,
         signal: controller.signal,
-        redirect: "follow", // Added redirect following for MangaWorld
+        redirect: "follow",
       }
 
       const response = await fetch(url, fetchOptions)
@@ -136,13 +136,10 @@ export class ComixScraper extends BaseMangaScraper {
     try {
       console.log(`[v0] Comix search starting for query: "${query}"`)
       const url = `${this.API_BASE}/manga?keyword=${encodeURIComponent(query)}&order[relevance]=desc&limit=20`
-      console.log(`[v0] Comix search URL: ${url}`)
 
       const res = await this.fetchWithTimeout(url)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
-
-      console.log(`[v0] Comix search response status: ${data.status}`)
 
       const results: ScrapedManga[] = []
       const items = data.result?.items || []
@@ -161,7 +158,6 @@ export class ComixScraper extends BaseMangaScraper {
         })
       }
 
-      console.log(`[v0] Comix search completed: ${results.length} results`)
       return results
     } catch (err) {
       console.error("[v0] Comix search error:", err)
@@ -171,10 +167,7 @@ export class ComixScraper extends BaseMangaScraper {
 
   async getChapters(hashId: string, page = 1, limit = 100): Promise<ScrapedChapter[]> {
     try {
-      console.log(`[v0] Comix getChapters starting for hash_id: "${hashId}"`)
       const url = `${this.API_BASE}/manga/${hashId}/chapters?limit=${limit}&page=${page}&order[number]=desc`
-      console.log(`[v0] Comix chapters URL: ${url}`)
-
       const res = await this.fetchWithTimeout(url)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
@@ -192,7 +185,6 @@ export class ComixScraper extends BaseMangaScraper {
         })
       }
 
-      console.log(`[v0] Comix getChapters completed: ${chapters.length} chapters`)
       return chapters.sort((a, b) => a.chapter_number - b.chapter_number)
     } catch (err) {
       console.error("[v0] Comix chapters error:", err)
@@ -203,27 +195,24 @@ export class ComixScraper extends BaseMangaScraper {
   async getPages(hashId: string, slug: string, chapterId: string, chapterNumber: number): Promise<ScrapedPage[]> {
     try {
       console.log(`[v0] Comix getPages starting for chapter: "${chapterId}"`)
-      // URL format: https://comix.to/title/<hash_id>-<slug>/<chapter_id>-chapter-<number>
       const url = `https://comix.to/title/${hashId}-${slug}/${chapterId}-chapter-${chapterNumber}`
-      console.log(`[v0] Comix pages URL: ${url}`)
-
+      
       const res = await this.fetchWithTimeout(url)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const html = await res.text()
 
-      // Extract images from script tag containing "images":["url1","url2",...]
-      const imagesMatch = html.match(/"images"\s*:\s*\[([^\]]+)\]/)
+      // MODIFIED REGEX: Capture the array of objects [...] instead of strings
+      const imagesMatch = html.match(/"images"\s*:\s*(\[[\s\S]*?\])/)
       if (!imagesMatch) {
         console.log("[v0] Comix: no images found in page")
         return []
       }
 
-      const imagesJson = `[${imagesMatch[1]}]`
-      const imageUrls: string[] = JSON.parse(imagesJson)
-
-      const pages: ScrapedPage[] = imageUrls.map((url, index) => ({
+      // MODIFIED PARSING: Parse the objects and extract the 'url' property
+      const imagesData = JSON.parse(imagesMatch[1])
+      const pages: ScrapedPage[] = imagesData.map((item: any, index: number) => ({
         page_number: index + 1,
-        url: url,
+        url: item.url,
       }))
 
       console.log(`[v0] Comix getPages completed: ${pages.length} pages`)
@@ -243,10 +232,7 @@ export class MangaWorldScraper extends BaseMangaScraper {
 
   async search(query: string): Promise<ScrapedManga[]> {
     try {
-      console.log(`[v0] MangaWorld search starting for query: "${query}"`)
       const url = `${this.BASE_URL}/archive?keyword=${encodeURIComponent(query)}`
-      console.log(`[v0] MangaWorld search URL: ${url}`)
-
       const res = await this.fetchWithTimeout(url)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const html = await res.text()
@@ -260,40 +246,24 @@ export class MangaWorldScraper extends BaseMangaScraper {
 
         if (!title || !mangaUrl) return
 
-        // Extract slug from URL like https://www.mangaworld.mx/manga/678/toukyou-ghoul
         const urlParts = mangaUrl.split("/")
-        const mangaId = urlParts[urlParts.length - 2] // e.g., "678"
-        const slug = urlParts[urlParts.length - 1] // e.g., "toukyou-ghoul"
-
-        const poster = $(el).find("img").attr("src")
-        const description = $(el).find(".story").text().replace("Trama:", "").trim()
-        const status = $(el).find(".status a").text().trim()
-        const type = $(el).find(".genre a").first().text().trim()
-        const author = $(el).find(".author a").text().trim()
-
-        const genres: string[] = []
-        $(el)
-          .find(".genres a")
-          .each((_, genreEl) => {
-            genres.push($(genreEl).text().trim())
-          })
+        const mangaId = urlParts[urlParts.length - 2]
+        const slug = urlParts[urlParts.length - 1]
 
         results.push({
           title,
           slug,
           id: mangaId,
           url: mangaUrl,
-          poster,
-          description,
+          poster: $(el).find("img").attr("src"),
+          description: $(el).find(".story").text().replace("Trama:", "").trim(),
           source: "World",
-          status,
-          type,
-          author,
-          genres,
+          status: $(el).find(".status a").text().trim(),
+          type: $(el).find(".genre a").first().text().trim(),
+          author: $(el).find(".author a").text().trim(),
         })
       })
 
-      console.log(`[v0] MangaWorld search completed: ${results.length} results`)
       return results
     } catch (err) {
       console.error("[v0] MangaWorld search error:", err)
@@ -303,10 +273,7 @@ export class MangaWorldScraper extends BaseMangaScraper {
 
   async getChapters(mangaId: string, slug: string): Promise<ScrapedChapter[]> {
     try {
-      console.log(`[v0] MangaWorld getChapters starting for: "${mangaId}/${slug}"`)
       const url = `${this.BASE_URL}/manga/${mangaId}/${slug}`
-      console.log(`[v0] MangaWorld chapters URL: ${url}`)
-
       const res = await this.fetchWithTimeout(url)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const html = await res.text()
@@ -316,29 +283,21 @@ export class MangaWorldScraper extends BaseMangaScraper {
       $(".chapter a.chap").each((_, el) => {
         const chapterUrl = $(el).attr("href")
         const chapterText = $(el).find("span.d-inline-block").text().trim()
-        const dateText = $(el).find(".chap-date").text().trim()
-
         if (!chapterUrl) return
 
-        // Extract chapter number from text like "Capitolo 143"
         const match = chapterText.match(/(?:Capitolo|Chapter)\s*(\d+(?:\.\d+)?)/i)
         if (!match) return
 
-        const chapterNum = Number.parseFloat(match[1])
-        // Extract chapter ID from URL
         const urlParts = chapterUrl.split("/")
-        const chapterId = urlParts[urlParts.length - 1]
-
         chapters.push({
-          chapter_number: chapterNum,
-          id: chapterId,
+          chapter_number: Number.parseFloat(match[1]),
+          id: urlParts[urlParts.length - 1],
           url: chapterUrl,
           title: chapterText,
-          date: dateText,
+          date: $(el).find(".chap-date").text().trim(),
         })
       })
 
-      console.log(`[v0] MangaWorld getChapters completed: ${chapters.length} chapters`)
       return chapters.sort((a, b) => a.chapter_number - b.chapter_number)
     } catch (err) {
       console.error("[v0] MangaWorld chapters error:", err)
@@ -348,11 +307,7 @@ export class MangaWorldScraper extends BaseMangaScraper {
 
   async getPages(chapterUrl: string): Promise<ScrapedPage[]> {
     try {
-      console.log(`[v0] MangaWorld getPages starting for: "${chapterUrl}"`)
-      // Convert to list mode
       const listUrl = chapterUrl.includes("?") ? `${chapterUrl}&style=list` : `${chapterUrl}/1?style=list`
-      console.log(`[v0] MangaWorld pages URL: ${listUrl}`)
-
       const res = await this.fetchWithTimeout(listUrl)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const html = await res.text()
@@ -362,14 +317,10 @@ export class MangaWorldScraper extends BaseMangaScraper {
       $("img.page-image").each((index, el) => {
         const src = $(el).attr("src")
         if (src) {
-          pages.push({
-            page_number: index + 1,
-            url: src,
-          })
+          pages.push({ page_number: index + 1, url: src })
         }
       })
 
-      console.log(`[v0] MangaWorld getPages completed: ${pages.length} pages`)
       return pages
     } catch (err) {
       console.error("[v0] MangaWorld pages error:", err)
