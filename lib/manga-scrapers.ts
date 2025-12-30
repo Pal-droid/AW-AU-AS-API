@@ -183,7 +183,7 @@ export class ComixScraper extends BaseMangaScraper {
           chapter_number: Number(item.number),
           id: String(item.chapter_id),
           url: `https://comix.to/title/${hashId}/chapter-${item.number}`,
-          title: item.name || `Chapter ${item.number}`,
+          title: `Chapter ${item.number}`,
           date: item.created_at,
         })
       }
@@ -202,7 +202,7 @@ export class ComixScraper extends BaseMangaScraper {
                     chapter_number: Number(item.number),
                     id: String(item.chapter_id),
                     url: `https://comix.to/title/${hashId}/chapter-${item.number}`,
-                    title: item.name || `Chapter ${item.number}`,
+                    title: `Chapter ${item.number}`,
                     date: item.created_at,
                   }))
                 }
