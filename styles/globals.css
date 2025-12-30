@@ -75,6 +75,8 @@
 }
 
 @theme inline {
+  --font-sans: 'Geist', 'Geist Fallback';
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -117,35 +119,7 @@
   * {
     @apply border-border outline-ring/50;
   }
-
   body {
     @apply bg-background text-foreground;
   }
-}
-
-/* === Custom Glassmorphism Effects === */
-.glass-card {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: all 0.3s ease;
-}
-
-.glass-card:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.glow {
-  box-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
-}
-
-/* Optional dark mode tuning for glass cards */
-.dark .glass-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.dark .glass-card:hover {
-  background: rgba(255, 255, 255, 0.08);
 }

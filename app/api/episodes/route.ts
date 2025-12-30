@@ -1,142 +1,112 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { ANIMEWORLD_BASE, parseEpisodes } from "@/lib/animeworld"
-import { fetchHtml } from "@/lib/fetch-html"
-import { withCors } from "@/lib/cors"
+import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper, UnityScraper } from "@/lib/scrapers"
+import type { EpisodeResult } from "@/lib/models"
+import { getQueryParams } from "@/lib/query-utils"
 
-function absolutize(href?: string) {
-  if (!href) return ""
-  if (href.startsWith("http")) return href
-  if (!href.startsWith("/")) href = `/${href}`
-  return `${ANIMEWORLD_BASE}${href}`
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET,OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type,User-Agent",
 }
 
-export const GET = withCors(async (req: NextRequest) => {
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: CORS_HEADERS,
+  })
+}
+
+export async function GET(request: NextRequest) {
+  const searchParams = getQueryParams(request)
+  const AW = searchParams.get("AW")
+  const AS = searchParams.get("AS")
+  const AP = searchParams.get("AP")
+  const AU = searchParams.get("AU")
+
+  console.log(`[v0] Episodes endpoint called with AW: ${AW}, AS: ${AS}, AP: ${AP}, AU: ${AU}`)
+
+  if (!AW && !AS && !AP && !AU) {
+    console.log("[v0] No IDs provided, returning error")
+    return NextResponse.json(
+      { error: "At least one source ID (AW, AS, AP, or AU) must be provided" },
+      { status: 400, headers: CORS_HEADERS },
+    )
+  }
+
   try {
-    const { searchParams } = new URL(req.url)
-    const path = searchParams.get("path")
-    const awId = searchParams.get("AW")
-    const asId = searchParams.get("AS")
-    const apId = searchParams.get("AP")
+    const tasks: Promise<any>[] = []
+    const animeworldScraper = new AnimeWorldScraper()
+    const animesaturnScraper = new AnimeSaturnScraper()
+    const animepaheScraper = new AnimePaheScraper()
+    const unityScraper = new UnityScraper()
 
-    if (awId || asId || apId) {
-      try {
-        const params = new URLSearchParams()
-        if (awId) params.set("AW", awId)
-        if (asId) params.set("AS", asId.toLowerCase())
-        if (apId) params.set("AP", apId)
+    if (AW) tasks.push(animeworldScraper.getEpisodes(AW))
+    if (AS) tasks.push(animesaturnScraper.getEpisodes(AS))
+    if (AP) tasks.push(animepaheScraper.getEpisodes(AP))
+    if (AU) tasks.push(unityScraper.getEpisodes(AU))
 
-        const unifiedRes = await fetch(`https://aw-au-as-api.vercel.app/api/episodes?${params}`, {
-          headers: {
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) AnizoneBot/1.0 Safari/537.36",
-            Accept: "application/json, text/plain, */*",
-            "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Cache-Control": "no-cache",
-            Pragma: "no-cache",
-          },
-          signal: AbortSignal.timeout(20000),
-        })
+    const results = await Promise.allSettled(tasks)
 
-        if (unifiedRes.ok) {
-          const unifiedData = await unifiedRes.json()
+    const allEpisodes: Record<number, EpisodeResult> = {}
 
-          if (Array.isArray(unifiedData) && unifiedData.length > 0) {
-            const episodes = unifiedData
-              .map((ep: any) => {
-                const awSource = ep.sources?.AnimeWorld
-                const asSource = ep.sources?.AnimeSaturn
-                const apSource = ep.sources?.AnimePahe
+    let taskIndex = 0
 
-                return {
-                  num: ep.episode_number,
-                  href: awSource?.url || asSource?.url || apSource?.url || "",
-                  id: awSource?.id || asSource?.id || apSource?.id || "",
-                  sources: {
-                    AnimeWorld: awSource
-                      ? {
-                          available: !!awSource.url,
-                          url: awSource.url,
-                          id: awSource.id,
-                        }
-                      : { available: false },
-                    AnimeSaturn: asSource
-                      ? {
-                          available: !!asSource.url,
-                          url: asSource.url,
-                          id: asSource.id,
-                        }
-                      : { available: false },
-                    AnimePahe: apSource
-                      ? {
-                          available: !!apSource.available,
-                          url: apSource.url || "",
-                          id: apSource.id,
-                          animeSession: apSource.animeSession,
-                        }
-                      : { available: false },
-                  },
-                }
-              })
-              .filter((ep: any) => ep.href || ep.id)
+    if (AW && results[taskIndex]?.status === "fulfilled") {
+      for (const ep of results[taskIndex].value) {
+        const epNum = ep.episode_number
+        if (!(epNum in allEpisodes)) allEpisodes[epNum] = { episode_number: epNum, sources: {} }
+        allEpisodes[epNum].sources["AnimeWorld"] = { available: true, url: ep.url || ep.stream_url, id: ep.id }
+      }
+      taskIndex++
+    } else if (AW) {
+      taskIndex++
+    }
 
-            return NextResponse.json({
-              ok: true,
-              episodes,
-              source: "https://aw-au-as-api.vercel.app/api/episodes",
-              unified: true,
-            })
-          }
-        } else {
-          const errorText = await unifiedRes.text()
-          console.warn(`Unified episodes API failed with status ${unifiedRes.status}:`, errorText)
+    if (AS && results[taskIndex]?.status === "fulfilled") {
+      for (const ep of results[taskIndex].value) {
+        const epNum = ep.episode_number
+        if (!(epNum in allEpisodes)) allEpisodes[epNum] = { episode_number: epNum, sources: {} }
+        allEpisodes[epNum].sources["AnimeSaturn"] = { available: true, url: ep.url || ep.stream_url, id: ep.id }
+      }
+      taskIndex++
+    } else if (AS) {
+      taskIndex++
+    }
+
+    if (AP && results[taskIndex]?.status === "fulfilled") {
+      for (const ep of results[taskIndex].value) {
+        const epNum = ep.episode_number
+        if (!(epNum in allEpisodes)) allEpisodes[epNum] = { episode_number: epNum, sources: {} }
+        allEpisodes[epNum].sources["AnimePahe"] = {
+          available: true,
+          url: ep.url || ep.stream_url,
+          id: ep.id,
+          animeSession: AP,
         }
-      } catch (unifiedError) {
-        console.warn("Unified episodes API failed:", unifiedError)
+      }
+      taskIndex++
+    } else if (AP) {
+      taskIndex++
+    }
+
+    if (AU && results[taskIndex]?.status === "fulfilled") {
+      for (const ep of results[taskIndex].value) {
+        const epNum = ep.episode_number
+        if (!(epNum in allEpisodes)) allEpisodes[epNum] = { episode_number: epNum, sources: {} }
+        allEpisodes[epNum].sources["Unity"] = { available: true, url: ep.url || ep.stream_url, id: ep.id }
       }
     }
 
-    if (!path) {
-      return NextResponse.json(
-        { ok: false, error: "Parametro mancante. Usa AW=<id>, AS=<id>, AP=<id> oppure path=<path>" },
-        { status: 400 },
-      )
+    for (const epData of Object.values(allEpisodes)) {
+      for (const source of ["AnimeWorld", "AnimeSaturn", "AnimePahe", "Unity"]) {
+        if (!(source in epData.sources)) epData.sources[source] = { available: false, url: undefined, id: undefined }
+      }
     }
 
-    let cleanPath = path
-    if (path.startsWith("/play/")) {
-      cleanPath = path.replace(/\/+/g, "/")
-    }
-
-    const url = cleanPath.startsWith("http") ? cleanPath : `${ANIMEWORLD_BASE}${cleanPath}`
-    console.log("[v0] Fetching episodes from URL:", url)
-
-    const { html, finalUrl } = await fetchHtml(url)
-    const raw = parseEpisodes(html) as Array<{ episode_num?: string; href?: string; data_id?: string }>
-    const mapped = raw
-      .map((e) => {
-        const num = Number.parseInt(String(e.episode_num || "0"), 10) || 0
-        const href = absolutize(e.href)
-        const id = e.data_id
-        if (!href || num <= 0) return null
-        return { num, href, id }
-      })
-      .filter(Boolean) as Array<{ num: number; href: string; id?: string }>
-
-    const byNum = new Map<number, { num: number; href: string; id?: string }>()
-    for (const ep of mapped) {
-      if (!byNum.has(ep.num)) byNum.set(ep.num, ep)
-    }
-    const episodes = Array.from(byNum.values()).sort((a, b) => a.num - b.num)
-
-    if (episodes.length === 0) {
-      return NextResponse.json(
-        { ok: false, error: "Nessun episodio trovato nella pagina sorgente.", source: finalUrl },
-        { status: 404 },
-      )
-    }
-
-    return NextResponse.json({ ok: true, episodes, source: finalUrl })
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "Errore durante il recupero episodi" }, { status: 500 })
+    const sortedEpisodes = Object.values(allEpisodes).sort((a, b) => a.episode_number - b.episode_number)
+    return NextResponse.json(sortedEpisodes, { headers: CORS_HEADERS })
+  } catch (error) {
+    console.log(`[v0] Exception in episodes endpoint: ${error}`)
+    return NextResponse.json({ error: `Failed to get episodes: ${error}` }, { status: 500, headers: CORS_HEADERS })
   }
-})
+}

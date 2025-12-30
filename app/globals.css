@@ -1,94 +1,82 @@
-@import "tailwindcss";
-@import "tw-animate-css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Premium Android Material You inspired light theme */
-  --background: oklch(0.98 0.005 280);
-  --foreground: oklch(0.15 0.01 280);
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.15 0.01 280);
+  --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.15 0.01 280);
-  --primary: oklch(0.55 0.2 280);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.94 0.02 280);
-  --secondary-foreground: oklch(0.25 0.02 280);
-  --muted: oklch(0.94 0.01 280);
-  --muted-foreground: oklch(0.45 0.02 280);
-  --accent: oklch(0.65 0.18 320);
-  --accent-foreground: oklch(1 0 0);
-  --destructive: oklch(0.55 0.22 25);
-  --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.9 0.01 280);
-  --input: oklch(0.96 0.01 280);
-  --ring: oklch(0.55 0.2 280 / 0.4);
-  --chart-1: oklch(0.55 0.2 280);
-  --chart-2: oklch(0.6 0.18 180);
-  --chart-3: oklch(0.7 0.15 80);
-  --chart-4: oklch(0.65 0.2 320);
-  --chart-5: oklch(0.55 0.22 25);
-  --radius: 1rem;
-  --sidebar: oklch(0.98 0.005 280);
-  --sidebar-foreground: oklch(0.15 0.01 280);
-  --sidebar-primary: oklch(0.55 0.2 280);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.65 0.18 320);
-  --sidebar-accent-foreground: oklch(1 0 0);
-  --sidebar-border: oklch(0.9 0.01 280);
-  --sidebar-ring: oklch(0.55 0.2 280 / 0.4);
-
-  /* Material You surface tones */
-  --surface-dim: oklch(0.88 0.01 280);
-  --surface-container: oklch(0.94 0.01 280);
-  --surface-container-high: oklch(0.92 0.01 280);
-  --surface-container-highest: oklch(0.9 0.01 280);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
 }
 
 .dark {
-  /* Premium dark theme with rich depth and subtle color */
-  --background: oklch(0.12 0.015 280);
-  --foreground: oklch(0.95 0.01 280);
-  --card: oklch(0.16 0.015 280);
-  --card-foreground: oklch(0.95 0.01 280);
-  --popover: oklch(0.14 0.015 280);
-  --popover-foreground: oklch(0.95 0.01 280);
-  --primary: oklch(0.75 0.15 280);
-  --primary-foreground: oklch(0.15 0.02 280);
-  --secondary: oklch(0.22 0.02 280);
-  --secondary-foreground: oklch(0.9 0.01 280);
-  --muted: oklch(0.25 0.015 280);
-  --muted-foreground: oklch(0.65 0.02 280);
-  --accent: oklch(0.72 0.14 320);
-  --accent-foreground: oklch(0.15 0.02 320);
-  --destructive: oklch(0.65 0.2 25);
-  --destructive-foreground: oklch(0.15 0.02 25);
-  --border: oklch(0.28 0.015 280);
-  --input: oklch(0.2 0.015 280);
-  --ring: oklch(0.75 0.15 280 / 0.5);
-  --chart-1: oklch(0.75 0.15 280);
-  --chart-2: oklch(0.7 0.15 180);
-  --chart-3: oklch(0.75 0.12 80);
-  --chart-4: oklch(0.72 0.14 320);
-  --chart-5: oklch(0.65 0.2 25);
-  --sidebar: oklch(0.14 0.015 280);
-  --sidebar-foreground: oklch(0.95 0.01 280);
-  --sidebar-primary: oklch(0.75 0.15 280);
-  --sidebar-primary-foreground: oklch(0.15 0.02 280);
-  --sidebar-accent: oklch(0.72 0.14 320);
-  --sidebar-accent-foreground: oklch(0.15 0.02 320);
-  --sidebar-border: oklch(0.28 0.015 280);
-  --sidebar-ring: oklch(0.75 0.15 280 / 0.5);
-
-  /* Material You dark surface tones */
-  --surface-dim: oklch(0.1 0.01 280);
-  --surface-container: oklch(0.14 0.015 280);
-  --surface-container-high: oklch(0.18 0.015 280);
-  --surface-container-highest: oklch(0.22 0.015 280);
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.145 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.145 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.396 0.141 25.723);
+  --destructive-foreground: oklch(0.637 0.237 25.331);
+  --border: oklch(0.269 0 0);
+  --input: oklch(0.269 0 0);
+  --ring: oklch(0.439 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(0.269 0 0);
+  --sidebar-ring: oklch(0.439 0 0);
 }
 
 @theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -125,277 +113,13 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-
-  /* Material You surface colors */
-  --color-surface-dim: var(--surface-dim);
-  --color-surface-container: var(--surface-container);
-  --color-surface-container-high: var(--surface-container-high);
-  --color-surface-container-highest: var(--surface-container-highest);
-
-  /* Using Inter for native Android feel */
-  --font-sans: "Inter", "Roboto", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "Roboto Mono", monospace;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
-
   body {
-    @apply bg-background text-foreground font-sans antialiased;
-    -webkit-tap-highlight-color: transparent;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
-
-  /* Material You elevated surface styles */
-  .surface {
-    @apply bg-card rounded-2xl;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1);
-  }
-
-  .surface-elevated {
-    @apply bg-card rounded-2xl;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.06);
-  }
-
-  .surface-high {
-    @apply rounded-2xl;
-    background: var(--surface-container-high);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1), 0 8px 24px rgba(0, 0, 0, 0.08);
-  }
-
-  /* Material You tonal button */
-  .btn-tonal {
-    @apply px-5 py-2.5 rounded-full font-medium transition-all duration-200;
-    background: var(--surface-container-highest);
-    color: var(--primary);
-  }
-
-  .btn-tonal:hover {
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(0, 0, 0, 0.08);
-  }
-
-  .btn-tonal:active {
-    transform: scale(0.98);
-  }
-
-  /* Material You filled button */
-  .btn-filled {
-    @apply px-5 py-2.5 rounded-full font-medium transition-all duration-200 bg-primary text-primary-foreground;
-  }
-
-  .btn-filled:hover {
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15), 0 4px 12px rgba(0, 0, 0, 0.1);
-    filter: brightness(1.05);
-  }
-
-  .btn-filled:active {
-    transform: scale(0.98);
-  }
-
-  /* Material ripple effect */
-  .ripple {
-    position: relative;
-    overflow: hidden;
-  }
-
-  .ripple::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(circle at var(--ripple-x, 50%) var(--ripple-y, 50%), currentColor 0%, transparent 60%);
-    opacity: 0;
-    transition: opacity 0.3s;
-  }
-
-  .ripple:active::after {
-    opacity: 0.1;
-  }
-
-  /* Android-style bottom sheet handle */
-  .sheet-handle {
-    @apply w-8 h-1 rounded-full mx-auto mb-4;
-    background: var(--muted);
-  }
-
-  /* Smoother transitions */
-  .transition-smooth {
-    @apply transition-all duration-200 ease-out;
-  }
-
-  .transition-spring {
-    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-
-  /* Card hover states - Material You style */
-  .card-interactive {
-    @apply transition-all duration-200 cursor-pointer;
-  }
-
-  .card-interactive:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 8px 24px rgba(0, 0, 0, 0.08);
-  }
-
-  .card-interactive:active {
-    transform: translateY(0) scale(0.99);
-  }
-
-  /* Focus states for accessibility */
-  .focus-ring {
-    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
-  }
-
-  /* Native scrollbar styling */
-  ::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
-  }
-
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  ::-webkit-scrollbar-thumb {
-    @apply bg-muted rounded-full;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-muted-foreground/50;
-  }
-
-  /* Hide scrollbar for cleaner mobile look */
-  .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-
-  .scrollbar-hide::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* Keep existing animations */
-  @keyframes float {
-    0%,
-    100% {
-      transform: translateY(0px);
-    }
-    50% {
-      transform: translateY(-6px);
-    }
-  }
-
-  .animate-float {
-    animation: float 4s ease-in-out infinite;
-  }
-
-  @keyframes pulse-subtle {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.7;
-    }
-  }
-
-  .animate-pulse-subtle {
-    animation: pulse-subtle 2s ease-in-out infinite;
-  }
-
-  @keyframes shimmer {
-    0% {
-      transform: translateX(-100%);
-    }
-    100% {
-      transform: translateX(100%);
-    }
-  }
-
-  .animate-shimmer {
-    animation: shimmer 1.5s infinite;
-  }
-
-  /* Skeleton loading with Material You style */
-  .skeleton {
-    @apply rounded-xl;
-    background: linear-gradient(
-      90deg,
-      var(--surface-container) 0%,
-      var(--surface-container-high) 50%,
-      var(--surface-container) 100%
-    );
-    background-size: 200% 100%;
-    animation: shimmer 1.5s infinite;
-  }
-
-  /* Keep seasonal animations */
-  @keyframes fall {
-    0% {
-      transform: translateY(-5vh) rotate(0deg);
-      opacity: 0;
-    }
-    10% {
-      opacity: 0.6;
-    }
-    90% {
-      opacity: 0.6;
-    }
-    100% {
-      transform: translateY(105vh) rotate(360deg);
-      opacity: 0;
-    }
-  }
-
-  .animate-fall {
-    animation: fall linear forwards;
-    animation-fill-mode: forwards;
-  }
-
-  @keyframes float-slow {
-    0%,
-    100% {
-      transform: translateY(0px) translateX(0px);
-    }
-    25% {
-      transform: translateY(-15px) translateX(8px);
-    }
-    50% {
-      transform: translateY(-8px) translateX(-8px);
-    }
-    75% {
-      transform: translateY(-20px) translateX(4px);
-    }
-  }
-
-  .animate-float-slow {
-    animation: float-slow 6s ease-in-out infinite;
-  }
-
-  @keyframes pulse-slow {
-    0%,
-    100% {
-      opacity: 0.5;
-      transform: scale(1);
-    }
-    50% {
-      opacity: 0.8;
-      transform: scale(1.05);
-    }
-  }
-
-  .animate-pulse-slow {
-    animation: pulse-slow 3s ease-in-out infinite;
-  }
-
-  /* Glass effect - simplified for performance */
-  .glass {
-    @apply bg-card/80 backdrop-blur-md border border-border/50 rounded-2xl;
-  }
-
-  .glass-strong {
-    @apply bg-card/90 backdrop-blur-lg border border-border/60 rounded-2xl;
+    @apply bg-background text-foreground;
   }
 }

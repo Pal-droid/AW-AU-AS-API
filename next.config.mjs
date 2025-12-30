@@ -7,21 +7,7 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   images: {
-    unoptimized: false,
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '**',
-      },
-      {
-        protocol: 'http',
-        hostname: '**',
-      },
-    ],
-    formats: ['image/webp', 'image/avif'],
-  },
-  experimental: {
-    optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
+    unoptimized: true,
   },
 }
 
