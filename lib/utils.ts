@@ -348,3 +348,57 @@ export function parseId(animeId: string) {
   const base = parts.join("-")
   return { base, season, lang }
 }
+
+/**
+ * Decode HTML entities to their corresponding characters
+ * Handles both named entities (&#x27;) and numeric entities (&#39;)
+ */
+export function decodeHtmlEntities(text: string): string {
+  if (!text) return text
+
+  // Named HTML entities
+  const namedEntities: Record<string, string> = {
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&quot;": '"',
+    "&apos;": "'",
+    "&nbsp;": " ",
+    "&ndash;": "–",
+    "&mdash;": "—",
+    "&lsquo;": "'",
+    "&rsquo;": "'",
+    "&ldquo;": '"',
+    "&rdquo;": '"',
+    "&hellip;": "…",
+    "&copy;": "©",
+    "&reg;": "®",
+    "&trade;": "™",
+  }
+
+  let decoded = text
+
+  // Replace named entities
+  for (const [entity, char] of Object.entries(namedEntities)) {
+    decoded = decoded.replace(new RegExp(entity, "gi"), char)
+  }
+
+  // Replace hex numeric entities: &#x27; -> '
+  decoded = decoded.replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(Number.parseInt(hex, 16)))
+
+  // Replace decimal numeric entities: &#39; -> '
+  decoded = decoded.replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number.parseInt(dec, 10)))
+
+  return decoded
+}
+
+/**
+ * Clean and normalize a title string
+ * - Decodes HTML entities
+ * - Removes excessive whitespace
+ * - Trims the result
+ */
+export function cleanTitle(title: string): string {
+  if (!title) return title
+  return decodeHtmlEntities(title).replace(/\s+/g, " ").trim()
+}

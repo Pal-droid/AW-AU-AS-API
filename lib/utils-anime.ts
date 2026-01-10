@@ -1,4 +1,5 @@
-import { parseId, normalizeTitle, stringSimilarity } from "./utils"
+import { parseId, normalizeTitle, stringSimilarity, cleanTitle } from "./utils"
+import { matchWithAniList, convertGroupsToResults, type SourceAnime } from "./anilist-matcher"
 
 /**
  * Check if two normalized titles have significant word differences
@@ -124,6 +125,8 @@ export async function shouldMatch(
   awTitle?: string,
   asTitle?: string,
   awAltTitle?: string,
+  awJtitle?: string,
+  asJtitle?: string,
 ): Promise<boolean> {
   try {
     const awParsed = parseId(awId)
@@ -146,6 +149,41 @@ export async function shouldMatch(
 
         if (hasSignificantDifference(normalizedAW, normalizedAS)) {
           console.log(`[v1] Significant difference detected: "${normalizedAW}" vs "${normalizedAS}"`)
+          if (awJtitle && asJtitle) {
+            const normalizedAwJtitle = normalizeTitle(cleanTitle(awJtitle))
+            const normalizedAsJtitle = normalizeTitle(cleanTitle(asJtitle))
+            const jtitleSimilarity = stringSimilarity(normalizedAwJtitle, normalizedAsJtitle)
+            console.log(
+              `[v1] Trying jtitle match: "${normalizedAwJtitle}" vs "${normalizedAsJtitle}" = ${jtitleSimilarity}`,
+            )
+            if (jtitleSimilarity >= 0.8) {
+              return true
+            }
+          }
+          if (awJtitle) {
+            const normalizedAwJtitle = normalizeTitle(cleanTitle(awJtitle))
+            if (!hasSignificantDifference(normalizedAwJtitle, normalizedAS)) {
+              const crossSimilarity = stringSimilarity(normalizedAwJtitle, normalizedAS)
+              console.log(
+                `[v1] Trying awJtitle vs asTitle: "${normalizedAwJtitle}" vs "${normalizedAS}" = ${crossSimilarity}`,
+              )
+              if (crossSimilarity >= 0.8) {
+                return true
+              }
+            }
+          }
+          if (asJtitle) {
+            const normalizedAsJtitle = normalizeTitle(cleanTitle(asJtitle))
+            if (!hasSignificantDifference(normalizedAW, normalizedAsJtitle)) {
+              const crossSimilarity = stringSimilarity(normalizedAW, normalizedAsJtitle)
+              console.log(
+                `[v1] Trying awTitle vs asJtitle: "${normalizedAW}" vs "${normalizedAsJtitle}" = ${crossSimilarity}`,
+              )
+              if (crossSimilarity >= 0.8) {
+                return true
+              }
+            }
+          }
           return false
         }
 
@@ -188,6 +226,41 @@ export async function shouldMatch(
 
     if (hasSignificantDifference(normalizedAW, normalizedAS)) {
       console.log(`[v1] Significant difference detected: "${normalizedAW}" vs "${normalizedAS}"`)
+      if (awJtitle && asJtitle) {
+        const normalizedAwJtitle = normalizeTitle(cleanTitle(awJtitle))
+        const normalizedAsJtitle = normalizeTitle(cleanTitle(asJtitle))
+        const jtitleSimilarity = stringSimilarity(normalizedAwJtitle, normalizedAsJtitle)
+        console.log(
+          `[v1] Trying jtitle match: "${normalizedAwJtitle}" vs "${normalizedAsJtitle}" = ${jtitleSimilarity}`,
+        )
+        if (jtitleSimilarity >= 0.8) {
+          return true
+        }
+      }
+      if (awJtitle) {
+        const normalizedAwJtitle = normalizeTitle(cleanTitle(awJtitle))
+        if (!hasSignificantDifference(normalizedAwJtitle, normalizedAS)) {
+          const crossSimilarity = stringSimilarity(normalizedAwJtitle, normalizedAS)
+          console.log(
+            `[v1] Trying awJtitle vs asTitle: "${normalizedAwJtitle}" vs "${normalizedAS}" = ${crossSimilarity}`,
+          )
+          if (crossSimilarity >= 0.8) {
+            return true
+          }
+        }
+      }
+      if (asJtitle) {
+        const normalizedAsJtitle = normalizeTitle(cleanTitle(asJtitle))
+        if (!hasSignificantDifference(normalizedAW, normalizedAsJtitle)) {
+          const crossSimilarity = stringSimilarity(normalizedAW, normalizedAsJtitle)
+          console.log(
+            `[v1] Trying awTitle vs asJtitle: "${normalizedAW}" vs "${normalizedAsJtitle}" = ${crossSimilarity}`,
+          )
+          if (crossSimilarity >= 0.8) {
+            return true
+          }
+        }
+      }
       return false
     }
 
@@ -218,6 +291,116 @@ export async function shouldMatch(
 }
 
 /**
+ * NEW: AniList-powered duplicate detection and merging
+ * Falls back to legacy matching if AniList is rate limited
+ */
+export async function detectDuplicatesWithAniList(
+  animeworldResults: any[],
+  animesaturnResults: any[],
+  animepaheResults: any[] = [],
+  unityResults: any[] = [],
+  heavenResults: any[] = [],
+): Promise<any[]> {
+  console.log("[AniList-Detect] Starting AniList-powered duplicate detection")
+
+  // Convert all sources to a unified format
+  const allSources: SourceAnime[] = []
+
+  for (const result of animeworldResults) {
+    allSources.push({
+      title: result.title,
+      id: result.id,
+      url: result.url,
+      poster: result.poster,
+      description: result.description,
+      source: "AnimeWorld",
+      altTitle: result.altTitle,
+      jtitle: result.jtitle,
+    })
+  }
+
+  for (const result of animesaturnResults) {
+    allSources.push({
+      title: result.title,
+      id: result.id,
+      url: result.url,
+      poster: result.poster,
+      description: result.description,
+      source: "AnimeSaturn",
+      altTitle: result.altTitle,
+      jtitle: result.jtitle,
+    })
+  }
+
+  for (const result of animepaheResults) {
+    allSources.push({
+      title: result.title,
+      id: result.id,
+      url: result.url,
+      poster: result.poster,
+      description: result.description,
+      source: "AnimePahe",
+      altTitle: result.altTitle,
+      jtitle: result.jtitle,
+    })
+  }
+
+  for (const result of unityResults) {
+    allSources.push({
+      title: result.title,
+      id: result.id,
+      url: result.url,
+      poster: result.poster,
+      description: result.description,
+      source: "Unity",
+      altTitle: result.altTitle,
+      jtitle: result.jtitle,
+    })
+  }
+
+  for (const result of heavenResults) {
+    allSources.push({
+      title: result.title,
+      id: result.id,
+      url: result.url,
+      poster: result.poster,
+      description: result.description,
+      source: "Heaven",
+      altTitle: result.altTitle,
+      jtitle: result.jtitle,
+    })
+  }
+
+  console.log(`[AniList-Detect] Total sources to process: ${allSources.length}`)
+
+  // Try AniList matching
+  const { groups, usedFallback, rateLimited } = await matchWithAniList(allSources)
+
+  // If we got results from AniList (even partial), use them
+  if (groups.length > 0) {
+    console.log(`[AniList-Detect] AniList returned ${groups.length} groups`)
+
+    const results = convertGroupsToResults(groups)
+
+    // If rate limited mid-way, we only return what we matched
+    // Unmatched sources are dropped to avoid fragmentized results
+    if (rateLimited) {
+      console.log("[AniList-Detect] Rate limited mid-processing, returning partial results")
+    }
+
+    return results
+  }
+
+  // Fallback to legacy matching if AniList failed completely
+  if (usedFallback || groups.length === 0) {
+    console.log("[AniList-Detect] Falling back to legacy matching")
+    return detectDuplicates(animeworldResults, animesaturnResults, animepaheResults, unityResults, heavenResults)
+  }
+
+  return []
+}
+
+/**
  * Async duplicate detection and merging for AnimeWorld + AnimeSaturn + AnimePahe + Unity results
  */
 export async function detectDuplicates(
@@ -225,13 +408,13 @@ export async function detectDuplicates(
   animesaturnResults: any[],
   animepaheResults: any[] = [],
   unityResults: any[] = [],
-  heavenResults: any[] = [], // Added Heaven parameter
+  heavenResults: any[] = [],
 ): Promise<any[]> {
   const unifiedResults: any[] = []
   const usedAnimesaturn = new Set<number>()
   const usedAnimePahe = new Set<number>()
   const usedUnity = new Set<number>()
-  const usedHeaven = new Set<number>() // Track used Heaven results
+  const usedHeaven = new Set<number>()
 
   for (const awResult of animeworldResults) {
     const sources = [{ name: "AnimeWorld", url: awResult.url, id: awResult.id }]
@@ -241,10 +424,76 @@ export async function detectDuplicates(
       if (usedAnimesaturn.has(i)) continue
       const asResult = animesaturnResults[i]
 
-      if (await shouldMatch(awResult.id, asResult.id, awResult.title, asResult.title, awResult.altTitle)) {
+      if (
+        await shouldMatch(
+          awResult.id,
+          asResult.id,
+          awResult.title,
+          asResult.title,
+          awResult.altTitle,
+          awResult.jtitle,
+          asResult.jtitle,
+        )
+      ) {
         bestMatch = [i, asResult]
         break
       }
+    }
+
+    const tryMatchWithJtitle = (
+      sourceTitle: string,
+      targetTitle: string,
+      sourceJtitle?: string,
+      targetJtitle?: string,
+      sourceAltTitle?: string,
+    ): boolean => {
+      const normalizedSource = normalizeTitle(sourceTitle)
+      const normalizedTarget = normalizeTitle(targetTitle)
+
+      // First try direct title match
+      if (!hasSignificantDifference(normalizedSource, normalizedTarget)) {
+        const similarity = stringSimilarity(normalizedSource, normalizedTarget)
+        if (similarity >= 0.8) return true
+      }
+
+      // Try altTitle
+      if (sourceAltTitle) {
+        const normalizedAlt = normalizeTitle(sourceAltTitle)
+        if (!hasSignificantDifference(normalizedAlt, normalizedTarget)) {
+          const altSimilarity = stringSimilarity(normalizedAlt, normalizedTarget)
+          if (altSimilarity >= 0.8) return true
+        }
+      }
+
+      // Try jtitle matching
+      if (sourceJtitle && targetJtitle) {
+        const normalizedSourceJtitle = normalizeTitle(cleanTitle(sourceJtitle))
+        const normalizedTargetJtitle = normalizeTitle(cleanTitle(targetJtitle))
+        if (!hasSignificantDifference(normalizedSourceJtitle, normalizedTargetJtitle)) {
+          const jtitleSimilarity = stringSimilarity(normalizedSourceJtitle, normalizedTargetJtitle)
+          if (jtitleSimilarity >= 0.8) return true
+        }
+      }
+
+      // Try cross-matching: sourceJtitle vs targetTitle
+      if (sourceJtitle) {
+        const normalizedSourceJtitle = normalizeTitle(cleanTitle(sourceJtitle))
+        if (!hasSignificantDifference(normalizedSourceJtitle, normalizedTarget)) {
+          const crossSimilarity = stringSimilarity(normalizedSourceJtitle, normalizedTarget)
+          if (crossSimilarity >= 0.8) return true
+        }
+      }
+
+      // Try cross-matching: sourceTitle vs targetJtitle
+      if (targetJtitle) {
+        const normalizedTargetJtitle = normalizeTitle(cleanTitle(targetJtitle))
+        if (!hasSignificantDifference(normalizedSource, normalizedTargetJtitle)) {
+          const crossSimilarity = stringSimilarity(normalizedSource, normalizedTargetJtitle)
+          if (crossSimilarity >= 0.8) return true
+        }
+      }
+
+      return false
     }
 
     let apMatch: [number, any] | null = null
@@ -252,43 +501,9 @@ export async function detectDuplicates(
       if (usedAnimePahe.has(i)) continue
       const apResult = animepaheResults[i]
 
-      const normalizedAW = normalizeTitle(awResult.title)
-      const normalizedAP = normalizeTitle(apResult.title)
-
-      if (hasSignificantDifference(normalizedAW, normalizedAP)) {
-        if (awResult.altTitle) {
-          const normalizedAlt = normalizeTitle(awResult.altTitle)
-          if (!hasSignificantDifference(normalizedAlt, normalizedAP)) {
-            const altSimilarity = stringSimilarity(normalizedAlt, normalizedAP)
-            console.log(
-              `[v1] AnimePahe altTitle similarity: "${normalizedAlt}" vs "${normalizedAP}" = ${altSimilarity}`,
-            )
-            if (altSimilarity >= 0.8) {
-              apMatch = [i, apResult]
-              break
-            }
-          }
-        }
-        continue
-      }
-
-      const similarity = stringSimilarity(normalizedAW, normalizedAP)
-
-      if (similarity >= 0.8) {
+      if (tryMatchWithJtitle(awResult.title, apResult.title, awResult.jtitle, apResult.jtitle, awResult.altTitle)) {
         apMatch = [i, apResult]
         break
-      }
-
-      if (awResult.altTitle) {
-        const normalizedAlt = normalizeTitle(awResult.altTitle)
-        if (!hasSignificantDifference(normalizedAlt, normalizedAP)) {
-          const altSimilarity = stringSimilarity(normalizedAlt, normalizedAP)
-          console.log(`[v1] AnimePahe altTitle similarity: "${normalizedAlt}" vs "${normalizedAP}" = ${altSimilarity}`)
-          if (altSimilarity >= 0.8) {
-            apMatch = [i, apResult]
-            break
-          }
-        }
       }
     }
 
@@ -297,41 +512,9 @@ export async function detectDuplicates(
       if (usedUnity.has(i)) continue
       const auResult = unityResults[i]
 
-      const normalizedAW = normalizeTitle(awResult.title)
-      const normalizedAU = normalizeTitle(auResult.title)
-
-      if (hasSignificantDifference(normalizedAW, normalizedAU)) {
-        if (awResult.altTitle) {
-          const normalizedAlt = normalizeTitle(awResult.altTitle)
-          if (!hasSignificantDifference(normalizedAlt, normalizedAU)) {
-            const altSimilarity = stringSimilarity(normalizedAlt, normalizedAU)
-            console.log(`[v1] Unity altTitle similarity: "${normalizedAlt}" vs "${normalizedAU}" = ${altSimilarity}`)
-            if (altSimilarity >= 0.8) {
-              auMatch = [i, auResult]
-              break
-            }
-          }
-        }
-        continue
-      }
-
-      const similarity = stringSimilarity(normalizedAW, normalizedAU)
-
-      if (similarity >= 0.8) {
+      if (tryMatchWithJtitle(awResult.title, auResult.title, awResult.jtitle, auResult.jtitle, awResult.altTitle)) {
         auMatch = [i, auResult]
         break
-      }
-
-      if (awResult.altTitle) {
-        const normalizedAlt = normalizeTitle(awResult.altTitle)
-        if (!hasSignificantDifference(normalizedAlt, normalizedAU)) {
-          const altSimilarity = stringSimilarity(normalizedAlt, normalizedAU)
-          console.log(`[v1] Unity altTitle similarity: "${normalizedAlt}" vs "${normalizedAU}" = ${altSimilarity}`)
-          if (altSimilarity >= 0.8) {
-            auMatch = [i, auResult]
-            break
-          }
-        }
       }
     }
 
@@ -340,41 +523,9 @@ export async function detectDuplicates(
       if (usedHeaven.has(i)) continue
       const hsResult = heavenResults[i]
 
-      const normalizedAW = normalizeTitle(awResult.title)
-      const normalizedHS = normalizeTitle(hsResult.title)
-
-      if (hasSignificantDifference(normalizedAW, normalizedHS)) {
-        if (awResult.altTitle) {
-          const normalizedAlt = normalizeTitle(awResult.altTitle)
-          if (!hasSignificantDifference(normalizedAlt, normalizedHS)) {
-            const altSimilarity = stringSimilarity(normalizedAlt, normalizedHS)
-            console.log(`[v1] Heaven altTitle similarity: "${normalizedAlt}" vs "${normalizedHS}" = ${altSimilarity}`)
-            if (altSimilarity >= 0.8) {
-              hsMatch = [i, hsResult]
-              break
-            }
-          }
-        }
-        continue
-      }
-
-      const similarity = stringSimilarity(normalizedAW, normalizedHS)
-
-      if (similarity >= 0.8) {
+      if (tryMatchWithJtitle(awResult.title, hsResult.title, awResult.jtitle, hsResult.jtitle, awResult.altTitle)) {
         hsMatch = [i, hsResult]
         break
-      }
-
-      if (awResult.altTitle) {
-        const normalizedAlt = normalizeTitle(awResult.altTitle)
-        if (!hasSignificantDifference(normalizedAlt, normalizedHS)) {
-          const altSimilarity = stringSimilarity(normalizedAlt, normalizedHS)
-          console.log(`[v1] Heaven altTitle similarity: "${normalizedAlt}" vs "${normalizedHS}" = ${altSimilarity}`)
-          if (altSimilarity >= 0.8) {
-            hsMatch = [i, hsResult]
-            break
-          }
-        }
       }
     }
 

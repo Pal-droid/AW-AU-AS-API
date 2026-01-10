@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper, UnityScraper } from "@/lib/scrapers"
-import { detectDuplicates } from "@/lib/utils-anime"
+import { detectDuplicatesWithAniList, detectDuplicates } from "@/lib/utils-anime"
 import { getQueryParams } from "@/lib/query-utils"
 
 export async function GET(request: Request) {
@@ -9,6 +9,7 @@ export async function GET(request: Request) {
 
     const searchParams = getQueryParams(request)
     const query = searchParams.get("q")
+    const useLegacy = searchParams.get("legacy") === "true"
 
     console.log("[v1] Query parameter:", query)
 
@@ -46,7 +47,14 @@ export async function GET(request: Request) {
       `[v1] Results - AW: ${awResults.length}, AS: ${asResults.length}, AP: ${apResults.length}, AU: ${auResults.length}`,
     )
 
-    const unifiedResults = await detectDuplicates(awResults, asResults, apResults, auResults)
+    let unifiedResults
+    if (useLegacy) {
+      console.log("[v1] Using legacy matching (requested via query param)")
+      unifiedResults = await detectDuplicates(awResults, asResults, apResults, auResults)
+    } else {
+      console.log("[v1] Using AniList-powered matching")
+      unifiedResults = await detectDuplicatesWithAniList(awResults, asResults, apResults, auResults)
+    }
 
     console.log(`[v1] Unified results: ${unifiedResults.length}`)
 
