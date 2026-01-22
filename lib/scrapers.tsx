@@ -530,199 +530,124 @@ export class AnimeSaturnScraper extends BaseScraper {
 }
 
 /** -------------------------
- * AnimePahe Scraper
+ * AnimePahe Scraper (Optimized)
  * ------------------------- */
+
+// Move patterns outside to prevent re-compilation on every function call
+const SEASON_PATTERNS = [
+  { pattern: /\bfirst\s+season\b/gi, replacement: "1" },
+  { pattern: /\bsecond\s+season\b/gi, replacement: "2" },
+  { pattern: /\bthird\s+season\b/gi, replacement: "3" },
+  { pattern: /\bfourth\s+season\b/gi, replacement: "4" },
+  { pattern: /\bfifth\s+season\b/gi, replacement: "5" },
+  { pattern: /\bsixth\s+season\b/gi, replacement: "6" },
+  { pattern: /\bseventh\s+season\b/gi, replacement: "7" },
+  { pattern: /\beighth\s+season\b/gi, replacement: "8" },
+  { pattern: /\bninth\s+season\b/gi, replacement: "9" },
+  { pattern: /\btenth\s+season\b/gi, replacement: "10" },
+  { pattern: /\b(\d+)(?:st|nd|rd|th)\s+season\b/gi, replacement: "$1" },
+  { pattern: /\bseason\s+(\d+)/gi, replacement: "$1" },
+  { pattern: /\bs(\d+)\b/gi, replacement: "$1" },
+  { pattern: /\bseason\s+i\b/gi, replacement: "1" },
+  { pattern: /\bseason\s+ii\b/gi, replacement: "2" },
+  { pattern: /\bseason\s+iii\b/gi, replacement: "3" },
+  { pattern: /\bseason\s+iv\b/gi, replacement: "4" },
+  { pattern: /\bseason\s+v\b/gi, replacement: "5" },
+  { pattern: /\bseason\s+vi\b/gi, replacement: "6" },
+  { pattern: /\bseason\s+vii\b/gi, replacement: "7" },
+  { pattern: /\bseason\s+viii\b/gi, replacement: "8" },
+];
+
 export class AnimePaheScraper extends BaseScraper {
-  private readonly API_BASE = "https://animepahe-two.vercel.app/api"
+  private readonly API_BASE = "https://animepahe-two.vercel.app/api";
 
   private normalizeAnimePaheTitle(title: string): string {
-    let normalized = title
+    let normalized = title;
 
-    // Normalize season names to numbers
-    const seasonPatterns = [
-      // English ordinals
-      { pattern: /\bfirst\s+season\b/gi, replacement: "1" },
-      { pattern: /\bsecond\s+season\b/gi, replacement: "2" },
-      { pattern: /\bthird\s+season\b/gi, replacement: "3" },
-      { pattern: /\bfourth\s+season\b/gi, replacement: "4" },
-      { pattern: /\bfifth\s+season\b/gi, replacement: "5" },
-      { pattern: /\bsixth\s+season\b/gi, replacement: "6" },
-      { pattern: /\bseventh\s+season\b/gi, replacement: "7" },
-      { pattern: /\beighth\s+season\b/gi, replacement: "8" },
-      { pattern: /\bninth\s+season\b/gi, replacement: "9" },
-      { pattern: /\btenth\s+season\b/gi, replacement: "10" },
-
-      // Ordinal numbers with "season"
-      { pattern: /\b(\d+)(?:st|nd|rd|th)\s+season\b/gi, replacement: "$1" },
-
-      // Season followed by number
-      { pattern: /\bseason\s+(\d+)/gi, replacement: "$1" },
-
-      // S + number (e.g., "S2", "s2")
-      { pattern: /\bs(\d+)\b/gi, replacement: "$1" },
-
-      // Roman numerals
-      { pattern: /\bseason\s+i\b/gi, replacement: "1" },
-      { pattern: /\bseason\s+ii\b/gi, replacement: "2" },
-      { pattern: /\bseason\s+iii\b/gi, replacement: "3" },
-      { pattern: /\bseason\s+iv\b/gi, replacement: "4" },
-      { pattern: /\bseason\s+v\b/gi, replacement: "5" },
-      { pattern: /\bseason\s+vi\b/gi, replacement: "6" },
-      { pattern: /\bseason\s+vii\b/gi, replacement: "7" },
-      { pattern: /\bseason\s+viii\b/gi, replacement: "8" },
-    ]
-
-    for (const { pattern, replacement } of seasonPatterns) {
-      normalized = normalized.replace(pattern, replacement)
+    for (const { pattern, replacement } of SEASON_PATTERNS) {
+      normalized = normalized.replace(pattern, replacement);
     }
 
-    // Clean up extra whitespace
-    normalized = normalized.replace(/\s+/g, " ").trim()
-
-    console.log(`[v0] AnimePahe title normalized: "${title}" -> "${normalized}"`)
-
-    return normalized
+    return normalized.replace(/\s+/g, " ").trim();
   }
 
   async search(query: string): Promise<ScrapedAnime[]> {
     try {
-      console.log(`[v0] AnimePahe search starting for query: "${query}"`)
-      const url = `${this.API_BASE}/search?q=${encodeURIComponent(query)}`
-      console.log(`[v0] AnimePahe search URL: ${url}`)
+      const url = `${this.API_BASE}/search?q=${encodeURIComponent(query)}`;
+      const res = await this.fetchWithTimeout(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      
+      const json = await res.json();
 
-      const res = await this.fetchWithTimeout(url)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json = await res.json()
-      console.log(`[v0] AnimePahe search response:`, json)
+      if (!json.data || !Array.isArray(json.data)) return [];
 
-      if (!json.data || !Array.isArray(json.data)) {
-        console.log("[v0] AnimePahe: no data array found")
-        return []
-      }
-
-      const results: ScrapedAnime[] = []
-
-      for (const anime of json.data) {
-        const normalizedTitle = this.normalizeAnimePaheTitle(anime.title)
-
-        results.push({
-          title: normalizedTitle,
-          slug: anime.session,
-          id: anime.session,
-          poster: anime.poster,
-          description: `${anime.type} (${anime.year}) - ${anime.season} - Episodes: ${anime.episodes}`,
-          source: "AnimePahe",
-        })
-      }
-
-      console.log(`[v0] AnimePahe search completed: ${results.length} results`)
-      return results
+      // Map is faster than for...of for simple object transformations
+      return json.data.map((anime: any) => ({
+        title: this.normalizeAnimePaheTitle(anime.title),
+        slug: anime.session,
+        id: anime.session,
+        poster: anime.poster,
+        description: `${anime.type} (${anime.year}) - ${anime.season} - Episodes: ${anime.episodes}`,
+        source: "AnimePahe",
+      }));
     } catch (err) {
-      console.error("[v0] AnimePahe search error:", err)
-      return []
+      console.error("[v0] AnimePahe search error:", err);
+      return [];
     }
   }
 
   async getEpisodes(animeSession: string): Promise<ScrapedEpisode[]> {
     try {
-      console.log(`[v0] AnimePahe getEpisodes starting for session: "${animeSession}"`)
-      const url = `${this.API_BASE}/${animeSession}/releases`
-      console.log(`[v0] AnimePahe episodes URL: ${url}`)
+      const url = `${this.API_BASE}/${animeSession}/releases`;
+      const res = await this.fetchWithTimeout(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      
+      const json = await res.json();
+      if (!json.data || !Array.isArray(json.data)) return [];
 
-      const res = await this.fetchWithTimeout(url)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json = await res.json()
-      console.log(`[v0] AnimePahe episodes response:`, json)
-
-      if (!json.data || !Array.isArray(json.data)) {
-        console.log("[v0] AnimePahe: no data array found")
-        return []
-      }
-
-      const episodes: ScrapedEpisode[] = []
-
-      for (const ep of json.data) {
-        episodes.push({
+      return json.data
+        .map((ep: any) => ({
           episode_number: ep.episode,
           id: ep.session,
           url: ep.snapshot || "",
-        })
-      }
-
-      const sortedEpisodes = episodes.sort((a, b) => a.episode_number - b.episode_number)
-      console.log(`[v0] AnimePahe getEpisodes completed: ${sortedEpisodes.length} episodes`)
-      return sortedEpisodes
+        }))
+        .sort((a, b) => a.episode_number - b.episode_number);
     } catch (err) {
-      console.error("[v0] AnimePahe episodes error:", err)
-      return []
+      console.error("[v0] AnimePahe episodes error:", err);
+      return [];
     }
   }
 
   async getStreamUrl(episodeSession: string, animeSession: string, resolution: string): Promise<ScrapedStream | null> {
     try {
-      console.log(
-        `[v0] AnimePahe getStreamUrl starting for episode: "${episodeSession}", anime: "${animeSession}", resolution: ${resolution}`,
-      )
+      const sourcesUrl = `${this.API_BASE}/play/${animeSession}?episodeId=${episodeSession}&downloads=false`;
+      const sourcesRes = await this.fetchWithTimeout(sourcesUrl);
+      if (!sourcesRes.ok) throw new Error(`HTTP ${sourcesRes.status}`);
 
-      const sourcesUrl = `${this.API_BASE}/play/${animeSession}?episodeId=${episodeSession}&downloads=false`
-      console.log(`[v0] AnimePahe sources URL: ${sourcesUrl}`)
+      const data = await sourcesRes.json();
+      if (!data.sources || !Array.isArray(data.sources) || data.sources.length === 0) return null;
 
-      const sourcesRes = await this.fetchWithTimeout(sourcesUrl)
-      if (!sourcesRes.ok) {
-        console.log(`[v0] AnimePahe sources request failed with status: ${sourcesRes.status}`)
-        throw new Error(`HTTP ${sourcesRes.status}`)
-      }
+      // Find best match: Priority 1: Exact Resolution & Sub, Priority 2: Exact Resolution & Dub
+      let selectedSource = data.sources.find((s: any) => s.resolution === resolution && !s.isDub) 
+                        || data.sources.find((s: any) => s.resolution === resolution);
 
-      const data = await sourcesRes.json()
-      console.log(`[v0] AnimePahe sources response:`, JSON.stringify(data, null, 2))
-
-      if (!data.sources || !Array.isArray(data.sources) || data.sources.length === 0) {
-        console.log("[v0] AnimePahe: no sources found in response")
-        return null
-      }
-
-      console.log(`[v0] AnimePahe: found ${data.sources.length} sources`)
-
-      // Find the source matching the requested resolution (prefer non-dub)
-      let selectedSource = data.sources.find((s: any) => s.resolution === resolution && !s.isDub)
-
-      // Fallback to dub version if non-dub not found
+      // Fallback: Highest quality Sub
       if (!selectedSource) {
-        console.log(`[v0] AnimePahe: ${resolution}p non-dub not found, trying dub version`)
-        selectedSource = data.sources.find((s: any) => s.resolution === resolution && s.isDub)
+        const sorted = [...data.sources].sort((a, b) => parseInt(b.resolution) - parseInt(a.resolution));
+        selectedSource = sorted.find((s: any) => !s.isDub) || sorted[0];
       }
-
-      // Fallback to highest quality if requested resolution not found
-      if (!selectedSource) {
-        console.log(`[v0] AnimePahe: ${resolution}p not found, using highest quality`)
-        // Sort by resolution descending and pick the first non-dub, or first overall
-        const sortedSources = [...data.sources].sort(
-          (a: any, b: any) => Number.parseInt(b.resolution) - Number.parseInt(a.resolution),
-        )
-        selectedSource = sortedSources.find((s: any) => !s.isDub) || sortedSources[0]
-      }
-
-      console.log(`[v0] AnimePahe selected source:`, selectedSource)
-
-      if (!selectedSource || !selectedSource.url) {
-        console.log("[v0] AnimePahe: no URL in selected source")
-        return null
-      }
-
-      const dubLabel = selectedSource.isDub ? " (Dub)" : ""
-      const providerLabel = `AnimePahe-${selectedSource.resolution}p${dubLabel}`
-      console.log(`[v0] AnimePahe: returning stream URL: ${selectedSource.url} with provider: ${providerLabel}`)
 
       return {
         stream_url: selectedSource.url,
-        provider: providerLabel,
-      }
+        provider: `AnimePahe-${selectedSource.resolution}p${selectedSource.isDub ? " (Dub)" : ""}`,
+      };
     } catch (err) {
-      console.error("[v0] AnimePahe stream error:", err)
-      return null
+      console.error("[v0] AnimePahe stream error:", err);
+      return null;
     }
   }
 }
+
 
 /** -------------------------
  * Unity (AnimeUnity) Scraper
