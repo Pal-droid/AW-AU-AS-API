@@ -530,126 +530,6 @@ export class AnimeSaturnScraper extends BaseScraper {
 }
 
 /** -------------------------
- * AnimePahe Scraper (Optimized)
- * ------------------------- */
-
-// Move patterns outside to prevent re-compilation on every function call
-const SEASON_PATTERNS = [
-  { pattern: /\bfirst\s+season\b/gi, replacement: "1" },
-  { pattern: /\bsecond\s+season\b/gi, replacement: "2" },
-  { pattern: /\bthird\s+season\b/gi, replacement: "3" },
-  { pattern: /\bfourth\s+season\b/gi, replacement: "4" },
-  { pattern: /\bfifth\s+season\b/gi, replacement: "5" },
-  { pattern: /\bsixth\s+season\b/gi, replacement: "6" },
-  { pattern: /\bseventh\s+season\b/gi, replacement: "7" },
-  { pattern: /\beighth\s+season\b/gi, replacement: "8" },
-  { pattern: /\bninth\s+season\b/gi, replacement: "9" },
-  { pattern: /\btenth\s+season\b/gi, replacement: "10" },
-  { pattern: /\b(\d+)(?:st|nd|rd|th)\s+season\b/gi, replacement: "$1" },
-  { pattern: /\bseason\s+(\d+)/gi, replacement: "$1" },
-  { pattern: /\bs(\d+)\b/gi, replacement: "$1" },
-  { pattern: /\bseason\s+i\b/gi, replacement: "1" },
-  { pattern: /\bseason\s+ii\b/gi, replacement: "2" },
-  { pattern: /\bseason\s+iii\b/gi, replacement: "3" },
-  { pattern: /\bseason\s+iv\b/gi, replacement: "4" },
-  { pattern: /\bseason\s+v\b/gi, replacement: "5" },
-  { pattern: /\bseason\s+vi\b/gi, replacement: "6" },
-  { pattern: /\bseason\s+vii\b/gi, replacement: "7" },
-  { pattern: /\bseason\s+viii\b/gi, replacement: "8" },
-];
-
-export class AnimePaheScraper extends BaseScraper {
-  private readonly API_BASE = "https://animepahe-two.vercel.app/api";
-
-  private normalizeAnimePaheTitle(title: string): string {
-    let normalized = title;
-
-    for (const { pattern, replacement } of SEASON_PATTERNS) {
-      normalized = normalized.replace(pattern, replacement);
-    }
-
-    return normalized.replace(/\s+/g, " ").trim();
-  }
-
-  async search(query: string): Promise<ScrapedAnime[]> {
-    try {
-      const url = `${this.API_BASE}/search?q=${encodeURIComponent(query)}`;
-      const res = await this.fetchWithTimeout(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      
-      const json = await res.json();
-
-      if (!json.data || !Array.isArray(json.data)) return [];
-
-      // Map is faster than for...of for simple object transformations
-      return json.data.map((anime: any) => ({
-        title: this.normalizeAnimePaheTitle(anime.title),
-        slug: anime.session,
-        id: anime.session,
-        poster: anime.poster,
-        description: `${anime.type} (${anime.year}) - ${anime.season} - Episodes: ${anime.episodes}`,
-        source: "AnimePahe",
-      }));
-    } catch (err) {
-      console.error("[v0] AnimePahe search error:", err);
-      return [];
-    }
-  }
-
-  async getEpisodes(animeSession: string): Promise<ScrapedEpisode[]> {
-    try {
-      const url = `${this.API_BASE}/${animeSession}/releases`;
-      const res = await this.fetchWithTimeout(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      
-      const json = await res.json();
-      if (!json.data || !Array.isArray(json.data)) return [];
-
-      return json.data
-        .map((ep: any) => ({
-          episode_number: ep.episode,
-          id: ep.session,
-          url: ep.snapshot || "",
-        }))
-        .sort((a, b) => a.episode_number - b.episode_number);
-    } catch (err) {
-      console.error("[v0] AnimePahe episodes error:", err);
-      return [];
-    }
-  }
-
-  async getStreamUrl(episodeSession: string, animeSession: string, resolution: string): Promise<ScrapedStream | null> {
-    try {
-      const sourcesUrl = `${this.API_BASE}/play/${animeSession}?episodeId=${episodeSession}&downloads=false`;
-      const sourcesRes = await this.fetchWithTimeout(sourcesUrl);
-      if (!sourcesRes.ok) throw new Error(`HTTP ${sourcesRes.status}`);
-
-      const data = await sourcesRes.json();
-      if (!data.sources || !Array.isArray(data.sources) || data.sources.length === 0) return null;
-
-      // Find best match: Priority 1: Exact Resolution & Sub, Priority 2: Exact Resolution & Dub
-      let selectedSource = data.sources.find((s: any) => s.resolution === resolution && !s.isDub) 
-                        || data.sources.find((s: any) => s.resolution === resolution);
-
-      // Fallback: Highest quality Sub
-      if (!selectedSource) {
-        const sorted = [...data.sources].sort((a, b) => parseInt(b.resolution) - parseInt(a.resolution));
-        selectedSource = sorted.find((s: any) => !s.isDub) || sorted[0];
-      }
-
-      return {
-        stream_url: selectedSource.url,
-        provider: `AnimePahe-${selectedSource.resolution}p${selectedSource.isDub ? " (Dub)" : ""}`,
-      };
-    } catch (err) {
-      console.error("[v0] AnimePahe stream error:", err);
-      return null;
-    }
-  }
-}
-
-
-/** -------------------------
  * Unity (AnimeUnity) Scraper
  * ------------------------- */
 export class UnityScraper extends BaseScraper {
@@ -757,18 +637,269 @@ export class UnityScraper extends BaseScraper {
   }
 }
 
+/** -------------------------
+ * AnimeGG Scraper
+ * ------------------------- */
+export class AnimeGGScraper extends BaseScraper {
+  private readonly BASE_URL = "https://www.animegg.org"
+
+  async search(query: string, isDub = false): Promise<ScrapedAnime[]> {
+    try {
+      console.log(`[v0] AnimeGG search starting for query: "${query}"`)
+      const url = `${this.BASE_URL}/search/?q=${encodeURIComponent(query)}`
+      console.log(`[v0] AnimeGG search URL: ${url}`)
+
+      const res = await this.fetchWithTimeout(url)
+      console.log(`[v0] AnimeGG search response status: ${res.status}`)
+      console.log(`[v0] AnimeGG search response headers:`, Object.fromEntries(res.headers.entries()))
+      
+      if (!res.ok) {
+        const errorBody = await res.text()
+        console.error(`[v0] AnimeGG search HTTP error ${res.status}:`, errorBody.slice(0, 500))
+        throw new Error(`HTTP ${res.status}`)
+      }
+      
+      const html = await res.text()
+      console.log(`[v0] AnimeGG search HTML length: ${html.length}`)
+      console.log(`[v0] AnimeGG search HTML preview:`, html.slice(0, 1000))
+
+      const regex = /<a href="(\/series\/[^"]+)" class="mse">.*?<h2>(.*?)<\/h2>/gs
+      const results: ScrapedAnime[] = []
+      let match: RegExpExecArray | null
+
+      // Test if there are any anchor tags with class mse at all
+      const mseTest = html.match(/<a[^>]*class="mse"[^>]*>/g)
+      console.log(`[v0] AnimeGG found ${mseTest?.length || 0} elements with class="mse"`)
+      
+      // Test for series links
+      const seriesTest = html.match(/\/series\/[^"]+/g)
+      console.log(`[v0] AnimeGG found ${seriesTest?.length || 0} series links:`, seriesTest?.slice(0, 5))
+
+      while ((match = regex.exec(html)) !== null) {
+        const relativeUrl = match[1]
+        const title = match[2]
+        const id = relativeUrl.replace("/series/", "")
+        
+        console.log(`[v0] AnimeGG match found: url=${relativeUrl}, title=${title}`)
+
+        results.push({
+          title: title,
+          slug: id,
+          id: id,
+          url: `${this.BASE_URL}${relativeUrl}`,
+          source: "AnimeGG",
+          description: isDub ? "Dub preferred" : "Sub preferred",
+        })
+      }
+
+      console.log(`[v0] AnimeGG search completed: ${results.length} results`)
+      return results
+    } catch (err) {
+      console.error("[v0] AnimeGG search error:", err)
+      console.error("[v0] AnimeGG search error stack:", err instanceof Error ? err.stack : "no stack")
+      return []
+    }
+  }
+
+  async getEpisodes(animeId: string): Promise<ScrapedEpisode[]> {
+    try {
+      console.log(`[v0] AnimeGG getEpisodes starting for ID: "${animeId}"`)
+      const url = `${this.BASE_URL}/series/${animeId}`
+      console.log(`[v0] AnimeGG episodes URL: ${url}`)
+
+      const res = await this.fetchWithTimeout(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const html = await res.text()
+      console.log(`[v0] AnimeGG episodes HTML length: ${html.length}`)
+
+      const episodes: ScrapedEpisode[] = []
+
+      // Regex to extract episode data
+      const epRegex =
+        /<a href="([^"]+)" class="anm_det_pop">[\s\S]*?<strong>(.*?)<\/strong>[\s\S]*?<i class="anititle">(.*?)<\/i>/g
+
+      let match: RegExpExecArray | null
+      while ((match = epRegex.exec(html)) !== null) {
+        const href = match[1]
+        const strongText = match[2]
+
+        // Try to extract number from URL first (e.g. /sword-art-online-episode-25)
+        const epNumStr = href.match(/-episode-(\d+)/)
+        let epNum = epNumStr ? Number.parseInt(epNumStr[1]) : 0
+
+        // Fallback: If URL doesn't have "-episode-", try extracting last number from strong tag
+        if (!epNum) {
+          const numMatch = strongText.match(/(\d+)$/)
+          epNum = numMatch ? Number.parseInt(numMatch[1]) : 0
+        }
+
+        if (epNum > 0) {
+          episodes.push({
+            episode_number: epNum,
+            id: href,
+            url: `${this.BASE_URL}${href}`,
+          })
+        }
+      }
+
+      const sortedEpisodes = episodes.sort((a, b) => a.episode_number - b.episode_number)
+      console.log(`[v0] AnimeGG getEpisodes completed: ${sortedEpisodes.length} episodes`)
+      return sortedEpisodes
+    } catch (err) {
+      console.error("[v0] AnimeGG episodes error:", err)
+      return []
+    }
+  }
+
+  async getStreamUrl(episodeId: string, preferDub = false): Promise<ScrapedStream | null> {
+    // This method is kept for backwards compatibility, returns the best quality for preferred server
+    const allStreams = await this.getAllStreamUrls(episodeId)
+    if (!allStreams) return null
+
+    // Return the best quality from preferred server, fallback to any available
+    const preferredServer = preferDub ? allStreams["GG-DUB"] : allStreams["GG-SUB"]
+    const fallbackServer = preferDub ? allStreams["GG-SUB"] : allStreams["GG-DUB"]
+    
+    const serverData = preferredServer || fallbackServer
+    if (!serverData || serverData.length === 0) return null
+
+    // Get best quality
+    const bestSource = serverData.reduce((prev, current) => {
+      const prevQuality = Number.parseInt(prev.quality) || 0
+      const currQuality = Number.parseInt(current.quality) || 0
+      return currQuality > prevQuality ? current : prev
+    })
+
+    return {
+      stream_url: bestSource.url,
+      embed: `<video 
+  src="${bestSource.url}" 
+  class="w-full h-full" 
+  controls 
+  playsinline 
+  preload="metadata" 
+  autoplay>
+</video>`,
+      provider: preferredServer ? (preferDub ? "GG-DUB" : "GG-SUB") : (preferDub ? "GG-SUB" : "GG-DUB"),
+    }
+  }
+
+  async getAllStreamUrls(episodeId: string): Promise<{
+    "GG-SUB"?: { url: string; quality: string; type: string }[]
+    "GG-DUB"?: { url: string; quality: string; type: string }[]
+  } | null> {
+    try {
+      console.log(`[v0] AnimeGG getAllStreamUrls starting for ID: "${episodeId}"`)
+
+      const episodeUrl = episodeId.startsWith("http") ? episodeId : `${this.BASE_URL}${episodeId}`
+      console.log(`[v0] AnimeGG episode URL: ${episodeUrl}`)
+
+      const res = await this.fetchWithTimeout(episodeUrl)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const html = await res.text()
+      console.log(`[v0] AnimeGG episode HTML length: ${html.length}`)
+
+      const result: {
+        "GG-SUB"?: { url: string; quality: string; type: string }[]
+        "GG-DUB"?: { url: string; quality: string; type: string }[]
+      } = {}
+
+      // Check for both subbed and dubbed servers
+      const servers: { tabId: string; serverName: "GG-SUB" | "GG-DUB" }[] = [
+        { tabId: "subbed-Animegg", serverName: "GG-SUB" },
+        { tabId: "dubbed-Animegg", serverName: "GG-DUB" },
+      ]
+
+      for (const { tabId, serverName } of servers) {
+        if (!html.includes(`id="${tabId}"`)) {
+          console.log(`[v0] AnimeGG: ${serverName} server not found`)
+          continue
+        }
+
+        const tabRegex = new RegExp(`<div id="${tabId}"[^>]*>\\s*<iframe src="(.*?)"`, "s")
+        const iframeMatch = html.match(tabRegex)
+
+        if (!iframeMatch) {
+          console.log(`[v0] AnimeGG: Embed iframe not found for ${serverName}`)
+          continue
+        }
+
+        const embedUrl = `${this.BASE_URL}${iframeMatch[1]}`
+        console.log(`[v0] AnimeGG ${serverName} embed URL: ${embedUrl}`)
+
+        try {
+          const embedRes = await this.fetchWithTimeout(embedUrl)
+          if (!embedRes.ok) {
+            console.log(`[v0] AnimeGG: Failed to fetch embed for ${serverName}: HTTP ${embedRes.status}`)
+            continue
+          }
+          const embedHtml = await embedRes.text()
+          console.log(`[v0] AnimeGG ${serverName} embed HTML length: ${embedHtml.length}`)
+
+          // Extract the JS array definition
+          const sourceMatch = embedHtml.match(/var\s+videoSources\s*=\s*(\[.*?\])/s)
+          if (!sourceMatch) {
+            console.log(`[v0] AnimeGG: Video sources variable not found for ${serverName}`)
+            continue
+          }
+
+          const rawSourceStr = sourceMatch[1]
+          const parsedSources: { url: string; quality: string; type: string }[] = []
+
+          // Regex to extract attributes from the unquoted JS objects
+          const objRegex = /{.*?file:\s*"(.*?)".*?label:\s*"(.*?)".*?}/g
+
+          let objMatch: RegExpExecArray | null
+          while ((objMatch = objRegex.exec(rawSourceStr)) !== null) {
+            const videoUrl = `${this.BASE_URL}${objMatch[1]}`
+            parsedSources.push({
+              url: videoUrl,
+              quality: objMatch[2],
+              type: "mp4",
+            })
+          }
+
+          if (parsedSources.length > 0) {
+            // Sort by quality (highest first)
+            parsedSources.sort((a, b) => {
+              const aQuality = Number.parseInt(a.quality) || 0
+              const bQuality = Number.parseInt(b.quality) || 0
+              return bQuality - aQuality
+            })
+            result[serverName] = parsedSources
+            console.log(`[v0] AnimeGG found ${parsedSources.length} sources for ${serverName}:`, parsedSources.map(s => s.quality))
+          }
+        } catch (embedErr) {
+          console.error(`[v0] AnimeGG embed fetch error for ${serverName}:`, embedErr)
+        }
+      }
+
+      if (Object.keys(result).length === 0) {
+        console.log("[v0] AnimeGG: No streams found for any server")
+        return null
+      }
+
+      console.log(`[v0] AnimeGG getAllStreamUrls completed:`, Object.keys(result))
+      return result
+    } catch (err) {
+      console.error("[v0] AnimeGG getAllStreamUrls error:", err)
+      return null
+    }
+  }
+}
+
 export async function searchAnime(query: string): Promise<ScrapedAnime[]> {
   const awScraper = new AnimeWorldScraper()
   const asScraper = new AnimeSaturnScraper()
-  const apScraper = new AnimePaheScraper()
   const auScraper = new UnityScraper()
-  const [awResults, asResults, apResults, auResults] = await Promise.all([
+  const agScraper = new AnimeGGScraper()
+  const [awResults, asResults, auResults, agResults] = await Promise.all([
     awScraper.search(query),
     asScraper.search(query),
-    apScraper.search(query),
     auScraper.search(query),
+    agScraper.search(query),
   ])
-  return aggregateAnime([awResults, asResults, apResults, auResults])
+  return aggregateAnime([awResults, asResults, auResults, agResults])
 }
 
 export async function getAllEpisodes(anime: ScrapedAnime): Promise<ScrapedEpisode[]> {
@@ -781,11 +912,11 @@ export async function getAllEpisodes(anime: ScrapedAnime): Promise<ScrapedEpisod
     } else if (src.name === "AnimeSaturn") {
       const scraper = new AnimeSaturnScraper()
       eps = await scraper.getEpisodes(src.id)
-    } else if (src.name === "AnimePahe") {
-      const scraper = new AnimePaheScraper()
-      eps = await scraper.getEpisodes(src.id)
     } else if (src.name === "Unity") {
       const scraper = new UnityScraper()
+      eps = await scraper.getEpisodes(src.id)
+    } else if (src.name === "AnimeGG") {
+      const scraper = new AnimeGGScraper()
       eps = await scraper.getEpisodes(src.id)
     }
     episodesList.push(eps)

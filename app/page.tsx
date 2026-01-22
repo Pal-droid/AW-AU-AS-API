@@ -37,7 +37,8 @@ export default function HomePage() {
           <ul className="list-disc list-inside space-y-1">
             <li>AnimeWorld (AW)</li>
             <li>AnimeSaturn (AS)</li>
-            <li>AnimePahe (AP)</li>
+            <li>AnimeUnity (AU)</li>
+            <li>AnimeGG (AG)</li>
           </ul>
         </div>
       </div>

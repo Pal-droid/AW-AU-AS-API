@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper, UnityScraper } from "@/lib/scrapers"
+import { AnimeWorldScraper, AnimeSaturnScraper, UnityScraper, AnimeGGScraper } from "@/lib/scrapers"
 import type { StreamResult } from "@/lib/models"
 import { getQueryParams } from "@/lib/query-utils"
 
@@ -24,32 +24,14 @@ export async function GET(request: NextRequest) {
   const searchParams = getQueryParams(request)
   const AW = searchParams.get("AW")
   const AS = searchParams.get("AS")
-  const AP = searchParams.get("AP")
-  const AP_ANIME = searchParams.get("AP_ANIME")
   const AU = searchParams.get("AU")
-  const res = searchParams.get("res")
+  const AG = searchParams.get("AG")
 
-  console.log(
-    `[v0] Stream endpoint called with AW: ${AW}, AS: ${AS}, AP: ${AP}, AP_ANIME: ${AP_ANIME}, AU: ${AU}, res: ${res}`,
-  )
+  console.log(`[v0] Stream endpoint called with AW: ${AW}, AS: ${AS}, AU: ${AU}, AG: ${AG}`)
 
-  if (!AW && !AS && !AP && !AU) {
+  if (!AW && !AS && !AU && !AG) {
     return NextResponse.json(
-      { error: "At least one episode ID (AW, AS, AP, or AU) must be provided" },
-      { status: 400, headers },
-    )
-  }
-
-  if (AP && !AP_ANIME) {
-    return NextResponse.json(
-      { error: "AnimePahe requires both AP (episode session) and AP_ANIME (anime session)" },
-      { status: 400, headers },
-    )
-  }
-
-  if (AP && !res) {
-    return NextResponse.json(
-      { error: "Resolution parameter (res) is required for AnimePahe (e.g., ?res=1080)" },
+      { error: "At least one episode ID (AW, AS, AU, or AG) must be provided" },
       { status: 400, headers },
     )
   }
@@ -59,8 +41,8 @@ export async function GET(request: NextRequest) {
     const taskSources: string[] = []
     const animeworldScraper = new AnimeWorldScraper()
     const animesaturnScraper = new AnimeSaturnScraper()
-    const animepaheScraper = new AnimePaheScraper()
     const unityScraper = new UnityScraper()
+    const animeggScraper = new AnimeGGScraper()
 
     if (AW) {
       console.log(`[v0] Adding AnimeWorld stream task for ID: ${AW}`)
@@ -72,15 +54,15 @@ export async function GET(request: NextRequest) {
       tasks.push(animesaturnScraper.getStreamUrl(AS))
       taskSources.push("AnimeSaturn")
     }
-    if (AP && AP_ANIME && res) {
-      console.log(`[v0] Adding AnimePahe stream task for episode: ${AP}, anime: ${AP_ANIME}, resolution: ${res}`)
-      tasks.push(animepaheScraper.getStreamUrl(AP, AP_ANIME, res))
-      taskSources.push("AnimePahe")
-    }
     if (AU) {
       console.log(`[v0] Adding Unity stream task for ID: ${AU}`)
       tasks.push(unityScraper.getStreamUrl(AU))
       taskSources.push("Unity")
+    }
+    if (AG) {
+      console.log(`[v0] Adding AnimeGG stream task for ID: ${AG}`)
+      tasks.push(animeggScraper.getAllStreamUrls(AG))
+      taskSources.push("AnimeGG")
     }
 
     console.log(`[v0] Running ${tasks.length} stream scraping tasks`)
@@ -88,13 +70,19 @@ export async function GET(request: NextRequest) {
     console.log(`[v0] Stream results:`, results)
 
     const streamResult: StreamResult & {
-      AnimePahe?: { available: boolean; stream_url?: string; embed?: string; provider?: string }
       Unity?: { available: boolean; stream_url?: string; embed?: string; provider?: string }
+      AnimeGG?: {
+        available: boolean
+        servers?: {
+          "GG-SUB"?: { url: string; quality: string; type: string }[]
+          "GG-DUB"?: { url: string; quality: string; type: string }[]
+        }
+      }
     } = {
       AnimeWorld: { available: false, stream_url: undefined, embed: undefined },
       AnimeSaturn: { available: false, stream_url: undefined, embed: undefined, provider: undefined },
-      AnimePahe: { available: false, stream_url: undefined, embed: undefined, provider: undefined },
       Unity: { available: false, stream_url: undefined, embed: undefined, provider: undefined },
+      AnimeGG: { available: false, servers: undefined },
     }
 
     for (let i = 0; i < results.length; i++) {
@@ -148,28 +136,6 @@ export async function GET(request: NextRequest) {
             embed: finalEmbed,
             provider: provider,
           }
-        } else if (source === "AnimePahe") {
-          const url = typeof data === "string" ? data : data.stream_url
-          const provider = typeof data === "object" ? data.provider : undefined
-
-          if (url) {
-            const embedUrl = `https://animesaturn-proxy.onrender.com/embed?url=${encodeURIComponent(url)}`
-            const embedHtml = `<video 
-    src="${embedUrl}" 
-    class="w-full h-full" 
-    controls 
-    playsinline 
-    preload="metadata" 
-    autoplay>
-</video>`
-
-            streamResult.AnimePahe = {
-              available: true,
-              stream_url: url,
-              embed: embedHtml,
-              provider: provider || "AnimePahe",
-            }
-          }
         } else if (source === "Unity") {
           const url = typeof data === "string" ? data : data.stream_url
           const embedHtml = typeof data === "object" ? data.embed : undefined
@@ -189,6 +155,23 @@ export async function GET(request: NextRequest) {
     autoplay>
 </video>`,
             provider: provider || "Unity",
+          }
+        } else if (source === "AnimeGG") {
+          // AnimeGG now returns all servers and qualities
+          const servers = data as {
+            "GG-SUB"?: { url: string; quality: string; type: string }[]
+            "GG-DUB"?: { url: string; quality: string; type: string }[]
+          } | null
+
+          if (servers && (servers["GG-SUB"] || servers["GG-DUB"])) {
+            streamResult.AnimeGG = {
+              available: true,
+              servers: servers,
+            }
+            console.log(`[v0] AnimeGG servers found:`, {
+              "GG-SUB": servers["GG-SUB"]?.map((s) => s.quality),
+              "GG-DUB": servers["GG-DUB"]?.map((s) => s.quality),
+            })
           }
         }
       } else if (result.status === "rejected") {
