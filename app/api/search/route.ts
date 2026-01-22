@@ -25,30 +25,66 @@ export async function GET(request: Request) {
 
     console.log(`[v1] Starting search for: "${query}"`)
 
+    const totalStartTime = Date.now()
+
     const animeworldScraper = new AnimeWorldScraper()
     const animesaturnScraper = new AnimeSaturnScraper()
     const animepaheScraper = new AnimePaheScraper()
     const unityScraper = new UnityScraper()
 
+    // Track individual scraper timings
+    const awStartTime = Date.now()
+    const asStartTime = Date.now()
+    const apStartTime = Date.now()
+    const auStartTime = Date.now()
+
     const [animeworldResults, animesaturnResults, animepaheResults, unityResults] = await Promise.allSettled([
-      animeworldScraper.search(query),
-      animesaturnScraper.search(query),
-      animepaheScraper.search(query),
-      unityScraper.search(query),
+      animeworldScraper.search(query).finally(() => {
+        console.log(`[TIMING] [AnimeWorld] [${Date.now() - awStartTime}ms]`)
+      }),
+      animesaturnScraper.search(query).finally(() => {
+        console.log(`[TIMING] [AnimeSaturn] [${Date.now() - asStartTime}ms]`)
+      }),
+      animepaheScraper.search(query).finally(() => {
+        console.log(`[TIMING] [AnimePahe] [${Date.now() - apStartTime}ms]`)
+      }),
+      unityScraper.search(query).finally(() => {
+        console.log(`[TIMING] [Unity] [${Date.now() - auStartTime}ms]`)
+      }),
     ])
+
+    const scrapersEndTime = Date.now()
+    console.log(`[TIMING] [AllScrapers] [${scrapersEndTime - totalStartTime}ms]`)
 
     const awResults = animeworldResults.status === "fulfilled" ? animeworldResults.value : []
     const asResults = animesaturnResults.status === "fulfilled" ? animesaturnResults.value : []
     const apResults = animepaheResults.status === "fulfilled" ? animepaheResults.value : []
     const auResults = unityResults.status === "fulfilled" ? unityResults.value : []
 
+    // Log errors if any scraper failed
+    if (animeworldResults.status === "rejected") {
+      console.log(`[ERROR] [AnimeWorld] [${animeworldResults.reason}]`)
+    }
+    if (animesaturnResults.status === "rejected") {
+      console.log(`[ERROR] [AnimeSaturn] [${animesaturnResults.reason}]`)
+    }
+    if (animepaheResults.status === "rejected") {
+      console.log(`[ERROR] [AnimePahe] [${animepaheResults.reason}]`)
+    }
+    if (unityResults.status === "rejected") {
+      console.log(`[ERROR] [Unity] [${unityResults.reason}]`)
+    }
+
     console.log(
-      `[v1] Results - AW: ${awResults.length}, AS: ${asResults.length}, AP: ${apResults.length}, AU: ${auResults.length}`,
+      `[RESULTS] [Counts] [AW: ${awResults.length}, AS: ${asResults.length}, AP: ${apResults.length}, AU: ${auResults.length}]`,
     )
 
+    const dedupeStartTime = Date.now()
     const unifiedResults = await detectDuplicates(awResults, asResults, apResults, auResults)
+    console.log(`[TIMING] [DuplicateDetection] [${Date.now() - dedupeStartTime}ms]`)
 
-    console.log(`[v1] Unified results: ${unifiedResults.length}`)
+    console.log(`[RESULTS] [Unified] [${unifiedResults.length} items]`)
+    console.log(`[TIMING] [TotalRequest] [${Date.now() - totalStartTime}ms]`)
 
     return NextResponse.json(unifiedResults, {
       status: 200,
