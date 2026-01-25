@@ -59,19 +59,48 @@ class BaseScraper {
  * Normalization & Matching
  * ------------------------- */
 
-function findMatchingKey(map: Map<string, ScrapedAnime>, title: string): string | undefined {
+function findMatchingKey(map: Map<string, ScrapedAnime>, title: string, altTitles?: string): string | undefined {
   const normalized = normalizeTitle(title)
+  console.log(`[v0] findMatchingKey: trying to match "${title}" -> "${normalized}"`)
+  
   let bestMatch: string | undefined
   let bestScore = 0
   const threshold = 0.8
 
+  // Try matching with main title first
   for (const key of map.keys()) {
     const score = stringSimilarity(normalized, key)
+    console.log(`[v0] findMatchingKey: main title "${normalized}" vs "${key}" = ${score}`)
     if (score > threshold && score > bestScore) {
       bestScore = score
       bestMatch = key
     }
   }
+
+  // If no good match found and alt titles are available, try them
+  if (!bestMatch && altTitles) {
+    console.log(`[v0] findMatchingKey: no good match for main title, trying alt titles: "${altTitles}"`)
+    // Split alt titles by common separators and try each
+    const altTitleList = altTitles.split(/[,;;]/).map(t => t.trim()).filter(t => t.length > 0)
+    console.log(`[v0] findMatchingKey: split alt titles:`, altTitleList)
+    
+    for (const altTitle of altTitleList) {
+      const normalizedAlt = normalizeTitle(altTitle)
+      console.log(`[v0] findMatchingKey: trying alt title "${altTitle}" -> "${normalizedAlt}"`)
+      
+      for (const key of map.keys()) {
+        const score = stringSimilarity(normalizedAlt, key)
+        console.log(`[v0] findMatchingKey: alt title "${normalizedAlt}" vs "${key}" = ${score}`)
+        if (score > threshold && score > bestScore) {
+          bestScore = score
+          bestMatch = key
+          console.log(`[v0] findMatchingKey: found better match with alt title: "${altTitle}" -> "${key}" (${score})`)
+        }
+      }
+    }
+  }
+
+  console.log(`[v0] findMatchingKey: final result: ${bestMatch ? `"${bestMatch}" (${bestScore})` : 'no match'}`)
   return bestMatch
 }
 
@@ -84,12 +113,13 @@ export function aggregateAnime(results: ScrapedAnime[][]): ScrapedAnime[] {
   for (const sourceResults of results) {
     for (const anime of sourceResults) {
       const normalizedTitle = normalizeTitle(anime.title)
-      const matchKey = findMatchingKey(map, normalizedTitle)
+      const matchKey = findMatchingKey(map, normalizedTitle, anime.altTitle)
 
       if (matchKey) {
         const existing = map.get(matchKey)!
         if (!existing.poster && anime.poster) existing.poster = anime.poster
         if (!existing.description && anime.description) existing.description = anime.description
+        if (!existing.altTitle && anime.altTitle) existing.altTitle = anime.altTitle
 
         if (!existing.sources) existing.sources = []
         for (const src of anime.sources ?? [{ name: anime.source, slug: anime.slug, id: anime.id }]) {
@@ -663,7 +693,8 @@ export class AnimeGGScraper extends BaseScraper {
       console.log(`[v0] AnimeGG search HTML length: ${html.length}`)
       console.log(`[v0] AnimeGG search HTML preview:`, html.slice(0, 1000))
 
-      const regex = /<a href="(\/series\/[^"]+)" class="mse">.*?<h2>(.*?)<\/h2>/gs
+      // Extract each anime item individually using a more flexible approach
+      const itemRegex = /<a href="(\/series\/[^"]+)" class="mse">[\s\S]*?<\/a>/g
       const results: ScrapedAnime[] = []
       let match: RegExpExecArray | null
 
@@ -672,22 +703,75 @@ export class AnimeGGScraper extends BaseScraper {
       console.log(`[v0] AnimeGG found ${mseTest?.length || 0} elements with class="mse"`)
       
       // Test for series links
-      const seriesTest = html.match(/\/series\/[^"]+/g)
+      const seriesTest = html.match(/\/series\/[^"']+/g)
       console.log(`[v0] AnimeGG found ${seriesTest?.length || 0} series links:`, seriesTest?.slice(0, 5))
 
-      while ((match = regex.exec(html)) !== null) {
+      while ((match = itemRegex.exec(html)) !== null) {
+        const itemHtml = match[0]
         const relativeUrl = match[1]
-        const title = match[2]
         const id = relativeUrl.replace("/series/", "")
         
-        console.log(`[v0] AnimeGG match found: url=${relativeUrl}, title=${title}`)
+        // Extract title
+        const titleMatch = itemHtml.match(/<h2>(.*?)<\/h2>/)
+        const rawTitle = titleMatch ? titleMatch[1].trim() : ""
+        
+        // Extract thumbnail
+        const thumbnailMatch = itemHtml.match(/<img src="([^"]+)"[^>]*class="media-object"/)
+        const thumbnail = thumbnailMatch ? thumbnailMatch[1] : ""
+        
+        // Extract episodes
+        const episodesMatch = itemHtml.match(/<div>Episodes:\s*(\d+)<\/div>/)
+        const episodes = episodesMatch ? Number.parseInt(episodesMatch[1]) : 0
+        
+        // Extract alt titles (more flexible)
+        let altTitles = ""
+        const altTitlesMatch = itemHtml.match(/<div>Alt Titles\s*:\s*([^<]+)<\/div>/i)
+        if (altTitlesMatch) {
+          altTitles = altTitlesMatch[1].trim()
+          console.log(`[v0] AnimeGG: extracted alt titles for "${rawTitle}": "${altTitles}"`)
+        } else {
+          console.log(`[v0] AnimeGG: no alt titles found for "${rawTitle}"`)
+        }
+        
+        console.log(`[v0] AnimeGG match found: url=${relativeUrl}, title=${rawTitle}, episodes=${episodes}, thumbnail=${thumbnail}, altTitles=${altTitles}`)
+
+        // Filter out results with 0 episodes
+        if (episodes === 0) {
+          console.log(`[v0] AnimeGG filtering out result with 0 episodes: ${rawTitle}`)
+          continue
+        }
+
+        // Apply title normalizations
+        let normalizedTitle = rawTitle
+        
+        // 1. Handle (Dub)/(ITA) matching - prioritize (Dub) to match with (ITA) results
+        const isDubVersion = rawTitle.includes("(Dub)") || id.endsWith("-dub")
+        if (isDubVersion) {
+          // Remove (Dub) from title for better matching
+          normalizedTitle = normalizedTitle.replace(/\s*\(Dub\)\s*/g, "").trim()
+        }
+        
+        // 2. Season normalization: "Season x" or "x Season" -> just "x"
+        normalizedTitle = normalizedTitle
+          .replace(/\bSeason\s+(\d+)\b/gi, "$1") // "Season 2" -> "2"
+          .replace(/\b(\d+)\s+Season\b/gi, "$1") // "2 Season" -> "2"
+          .replace(/\b(\d+)(?:st|nd|rd|th)\s+Season\b/gi, "$1") // "2nd Season" -> "2"
+          .replace(/\b(\d+)(?:st|nd|rd|th)\s+Season\b/gi, "$1") // "3rd Season" -> "3"
+
+        // Ensure thumbnail is absolute URL
+        let posterUrl = thumbnail
+        if (posterUrl && !posterUrl.startsWith("http")) {
+          posterUrl = new URL(posterUrl, this.BASE_URL).href
+        }
 
         results.push({
-          title: title,
+          title: normalizedTitle,
           slug: id,
           id: id,
           url: `${this.BASE_URL}${relativeUrl}`,
+          poster: posterUrl,
           source: "AnimeGG",
+          altTitle: altTitles,
           description: isDub ? "Dub preferred" : "Sub preferred",
         })
       }
@@ -837,7 +921,7 @@ export class AnimeGGScraper extends BaseScraper {
           console.log(`[v0] AnimeGG ${serverName} embed HTML length: ${embedHtml.length}`)
 
           // Extract the JS array definition
-          const sourceMatch = embedHtml.match(/var\s+videoSources\s*=\s*(\[.*?\])/s)
+          const sourceMatch = embedHtml.match(/var\s+videoSources\s*=\s*(\[[\s\S]*?\])/)
           if (!sourceMatch) {
             console.log(`[v0] AnimeGG: Video sources variable not found for ${serverName}`)
             continue

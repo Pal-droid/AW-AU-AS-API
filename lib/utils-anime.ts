@@ -16,7 +16,7 @@ function hasSignificantDifference(title1: string, title2: string): boolean {
     "sub",
     "dub",
     "eng",
-    "jpn",
+    "jpn", 
     "jap",
     "esp",
     "fra",
@@ -29,10 +29,23 @@ function hasSignificantDifference(title1: string, title2: string): boolean {
     "english",
     "japanese",
     "spanish",
+    "korean",
   ])
 
   const hasLangTag1 = words1.some((w) => languageTags.has(w))
   const hasLangTag2 = words2.some((w) => languageTags.has(w))
+
+  // Check for explicit dub/sub conflicts
+  const hasDub1 = words1.some((w) => w.includes("dub"))
+  const hasSub1 = words1.some((w) => w.includes("sub"))
+  const hasDub2 = words2.some((w) => w.includes("dub"))
+  const hasSub2 = words2.some((w) => w.includes("sub"))
+
+  // If one is explicitly dub and the other is explicitly sub, they should not match
+  if ((hasDub1 && hasSub2) || (hasSub1 && hasDub2)) {
+    console.log(`[v0] Dub/Sub conflict: "${title1}" (${hasDub1 ? 'dub' : hasSub1 ? 'sub' : 'neutral'}) vs "${title2}" (${hasDub2 ? 'dub' : hasSub2 ? 'sub' : 'neutral'})`)
+    return true
+  }
 
   if (hasLangTag1 !== hasLangTag2) {
     console.log(`[v0] Language tag asymmetry: "${title1}" (${hasLangTag1}) vs "${title2}" (${hasLangTag2})`)
@@ -573,29 +586,147 @@ export async function detectDuplicates(
     for (const unified of unifiedResults) {
       const normalizedUnified = normalizeTitle(unified.title)
 
-      if (hasSignificantDifference(normalizedAG, normalizedUnified)) {
-        continue
+      // Check for explicit dub/sub conflicts before matching
+      const agWords = agResult.title.toLowerCase().split(" ")
+      const unifiedWords = unified.title.toLowerCase().split(" ")
+      const agId = agResult.id.toLowerCase()
+      
+      const hasDubAG = agWords.some((w: string) => w.includes("dub")) || agId.includes("dub")
+      const hasSubAG = agWords.some((w: string) => w.includes("sub"))
+      
+      // Check unified result and its existing sources for dub/sub indicators
+      let hasDubUnified = unifiedWords.some((w: string) => w.includes("dub"))
+      let hasSubUnified = unifiedWords.some((w: string) => w.includes("sub"))
+      
+      // Also check existing sources in unified result
+      if (unified.sources) {
+        hasDubUnified = hasDubUnified || unified.sources.some((src: any) => 
+          src.id.toLowerCase().includes("dub") || src.name.toLowerCase().includes("dub")
+        )
+        hasSubUnified = hasSubUnified || unified.sources.some((src: any) => 
+          src.id.toLowerCase().includes("sub") || src.name.toLowerCase().includes("sub")
+        )
       }
 
-      const similarity = stringSimilarity(normalizedAG, normalizedUnified)
+      // Debug logging
+      console.log(`[v0] AGG Dub/Sub check: "${agResult.title}" (AG: dub=${hasDubAG}, sub=${hasSubAG}) vs "${unified.title}" (Unified: dub=${hasDubUnified}, sub=${hasSubUnified})`)
+      console.log(`[v1] AGG existing sources:`, unified.sources?.map((s: any) => ({ id: s.id, name: s.name })))
+
+      // Check if unified result has explicit language indicators (like ITA, ENG, etc.)
+      const languageTokens = new Set(["ita", "eng", "jpn", "esp", "fra", "ger", "deu"])
+      const hasLanguageIndicator = unifiedWords.some((w: string) => languageTokens.has(w)) || (unified.sources && unified.sources.some((src: any) =>
+        Array.from(languageTokens).some((lang) => src.id.toLowerCase().includes(lang) || src.name.toLowerCase().includes(lang))
+      ))
+
+      const normalizedUnifiedForCompare = hasDubAG && hasLanguageIndicator
+        ? normalizedUnified
+            .split(" ")
+            .filter((w: string) => w.length > 0 && !languageTokens.has(w))
+            .join(" ")
+        : normalizedUnified
+
+      // Try main title first, but check for dub/sub conflicts before hasSignificantDifference
+      const similarity = stringSimilarity(normalizedAG, normalizedUnifiedForCompare)
       if (similarity >= 0.8) {
-        unified.sources.push({ name: "AnimeGG", url: agResult.url, id: agResult.id })
-        unified.has_multi_servers = unified.sources.length > 1
-        usedAnimeGG.add(i)
-        matched = true
-        break
+        // Check for dub/sub conflicts only when titles are similar enough
+        // If AGG result is dub and unified result has any dub sources, they should not match
+        // If AGG result is dub and unified result has no explicit language indicators (neutral), treat unified as sub and prevent matching
+        // If AGG result is sub and unified result has dub sources, they should not match
+        // Allow dub versions to match with entries that have explicit language indicators
+        if ((hasDubAG && (hasSubUnified || (!hasDubUnified && !hasSubUnified && !hasLanguageIndicator))) || (hasSubAG && hasDubUnified)) {
+          const unifiedType = hasDubUnified ? 'dub' : hasSubUnified ? 'sub' : (hasLanguageIndicator ? 'language-specific' : 'sub (neutral)')
+          console.log(`[v0] AGG Dub/Sub conflict: "${agResult.title}" (${hasDubAG ? 'dub' : hasSubAG ? 'sub' : 'neutral'}) vs "${unified.title}" (${unifiedType})`)
+          continue // Skip this unified result and try next one
+        }
+        
+        // Check for significant difference only after passing dub/sub conflict check
+        if (!hasSignificantDifference(normalizedAG, normalizedUnifiedForCompare)) {
+          console.log(`[v0] AGG matched main title: "${agResult.title}" -> "${unified.title}" (${similarity})`)
+          unified.sources.push({ name: "AnimeGG", url: agResult.url, id: agResult.id })
+          unified.has_multi_servers = unified.sources.length > 1
+          
+          // Add isDub field if this is a dub source
+          if (hasDubAG) {
+            unified.isDub = true
+          }
+          
+          usedAnimeGG.add(i)
+          matched = true
+          break
+        }
+      }
+
+      // If no main title match, try alt titles
+      if (!matched && agResult.altTitle) {
+        console.log(`[v0] AGG trying alt titles for "${agResult.title}": "${agResult.altTitle}"`)
+        const altTitleList = agResult.altTitle.split(/[,;;]/).map((t: string) => t.trim()).filter((t: string) => t.length > 0)
+        
+        for (const altTitle of altTitleList) {
+          const normalizedAlt = normalizeTitle(altTitle)
+          
+          // Check for dub/sub conflicts with alt titles too
+          const altWords = altTitle.toLowerCase().split(" ")
+          const hasDubAlt = altWords.some((w: string) => w.includes("dub"))
+          const hasSubAlt = altWords.some((w: string) => w.includes("sub"))
+
+          const similarity = stringSimilarity(normalizedAlt, normalizedUnifiedForCompare)
+          if (similarity >= 0.8) {
+            // Check for dub/sub conflicts only when titles are similar enough
+            // Use the main AGG result's dub/sub status, not the alt title's
+            // If AGG result is dub and unified result has any dub sources, they should not match
+            // If AGG result is dub and unified result has no explicit language indicators (neutral), treat unified as sub and prevent matching
+            // If AGG result is sub and unified result has dub sources, they should not match
+            // Allow dub versions to match with entries that have explicit language indicators
+            if ((hasDubAG && (hasSubUnified || (!hasDubUnified && !hasSubUnified && !hasLanguageIndicator))) || (hasSubAG && hasDubUnified)) {
+              const unifiedType = hasDubUnified ? 'dub' : hasSubUnified ? 'sub' : (hasLanguageIndicator ? 'language-specific' : 'sub (neutral)')
+              console.log(`[v0] AGG Alt Dub/Sub conflict: "${altTitle}" (${hasDubAG ? 'dub' : hasSubAG ? 'sub' : 'neutral'}) vs "${unified.title}" (${unifiedType})`)
+              continue
+            }
+            
+            // Check for significant difference only after passing dub/sub conflict check
+            if (!hasSignificantDifference(normalizedAlt, normalizedUnifiedForCompare)) {
+              console.log(`[v0] AGG matched alt title: "${altTitle}" -> "${unified.title}" (${similarity})`)
+              unified.sources.push({ name: "AnimeGG", url: agResult.url, id: agResult.id })
+              unified.has_multi_servers = unified.sources.length > 1
+              
+              // Add isDub field if this is a dub source
+              if (hasDubAG) {
+                unified.isDub = true
+              }
+              
+              usedAnimeGG.add(i)
+              matched = true
+              break
+            }
+          }
+        }
+        if (matched) break
       }
     }
 
     if (!matched) {
+      console.log(`[v0] AGG no match found for: "${agResult.title}" (alt: "${agResult.altTitle || 'none'}")`)
       usedAnimeGG.add(i)
-      unifiedResults.push({
+      
+      // Check if this is a dub source for the new unified result
+      const agWords = agResult.title.toLowerCase().split(" ")
+      const agId = agResult.id.toLowerCase()
+      const isDubSource = agWords.some((w: string) => w.includes("dub")) || agId.includes("dub")
+      
+      const newUnifiedResult: any = {
         title: agResult.title,
         description: agResult.description,
         images: { poster: agResult.poster, cover: agResult.cover },
         sources: [{ name: "AnimeGG", url: agResult.url, id: agResult.id }],
         has_multi_servers: false,
-      })
+      }
+      
+      // Add isDub field if this is a dub source
+      if (isDubSource) {
+        newUnifiedResult.isDub = true
+      }
+      
+      unifiedResults.push(newUnifiedResult)
     }
   }
 
