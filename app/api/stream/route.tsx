@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper, UnityScraper } from "@/lib/scrapers"
+import { AnimeWorldScraper, AnimeSaturnScraper, UnityScraper } from "@/lib/scrapers"
 import type { StreamResult } from "@/lib/models"
 import { getQueryParams } from "@/lib/query-utils"
 
@@ -24,32 +24,15 @@ export async function GET(request: NextRequest) {
   const searchParams = getQueryParams(request)
   const AW = searchParams.get("AW")
   const AS = searchParams.get("AS")
-  const AP = searchParams.get("AP")
-  const AP_ANIME = searchParams.get("AP_ANIME")
   const AU = searchParams.get("AU")
-  const res = searchParams.get("res")
 
   console.log(
-    `[v0] Stream endpoint called with AW: ${AW}, AS: ${AS}, AP: ${AP}, AP_ANIME: ${AP_ANIME}, AU: ${AU}, res: ${res}`,
+    `[v0] Stream endpoint called with AW: ${AW}, AS: ${AS}, AU: ${AU}`,
   )
 
-  if (!AW && !AS && !AP && !AU) {
+  if (!AW && !AS && !AU) {
     return NextResponse.json(
-      { error: "At least one episode ID (AW, AS, AP, or AU) must be provided" },
-      { status: 400, headers },
-    )
-  }
-
-  if (AP && !AP_ANIME) {
-    return NextResponse.json(
-      { error: "AnimePahe requires both AP (episode session) and AP_ANIME (anime session)" },
-      { status: 400, headers },
-    )
-  }
-
-  if (AP && !res) {
-    return NextResponse.json(
-      { error: "Resolution parameter (res) is required for AnimePahe (e.g., ?res=1080)" },
+      { error: "At least one episode ID (AW, AS, or AU) must be provided" },
       { status: 400, headers },
     )
   }
@@ -59,7 +42,6 @@ export async function GET(request: NextRequest) {
     const taskSources: string[] = []
     const animeworldScraper = new AnimeWorldScraper()
     const animesaturnScraper = new AnimeSaturnScraper()
-    const animepaheScraper = new AnimePaheScraper()
     const unityScraper = new UnityScraper()
 
     if (AW) {
@@ -72,11 +54,6 @@ export async function GET(request: NextRequest) {
       tasks.push(animesaturnScraper.getStreamUrl(AS))
       taskSources.push("AnimeSaturn")
     }
-    if (AP && AP_ANIME && res) {
-      console.log(`[v0] Adding AnimePahe stream task for episode: ${AP}, anime: ${AP_ANIME}, resolution: ${res}`)
-      tasks.push(animepaheScraper.getStreamUrl(AP, AP_ANIME, res))
-      taskSources.push("AnimePahe")
-    }
     if (AU) {
       console.log(`[v0] Adding Unity stream task for ID: ${AU}`)
       tasks.push(unityScraper.getStreamUrl(AU))
@@ -88,12 +65,10 @@ export async function GET(request: NextRequest) {
     console.log(`[v0] Stream results:`, results)
 
     const streamResult: StreamResult & {
-      AnimePahe?: { available: boolean; stream_url?: string; embed?: string; provider?: string }
       Unity?: { available: boolean; stream_url?: string; embed?: string; provider?: string }
     } = {
       AnimeWorld: { available: false, stream_url: undefined, embed: undefined },
       AnimeSaturn: { available: false, stream_url: undefined, embed: undefined, provider: undefined },
-      AnimePahe: { available: false, stream_url: undefined, embed: undefined, provider: undefined },
       Unity: { available: false, stream_url: undefined, embed: undefined, provider: undefined },
     }
 
@@ -147,28 +122,6 @@ export async function GET(request: NextRequest) {
             stream_url: url,
             embed: finalEmbed,
             provider: provider,
-          }
-        } else if (source === "AnimePahe") {
-          const url = typeof data === "string" ? data : data.stream_url
-          const provider = typeof data === "object" ? data.provider : undefined
-
-          if (url) {
-            const embedUrl = `https://animesaturn-proxy.onrender.com/embed?url=${encodeURIComponent(url)}`
-            const embedHtml = `<video 
-    src="${embedUrl}" 
-    class="w-full h-full" 
-    controls 
-    playsinline 
-    preload="metadata" 
-    autoplay>
-</video>`
-
-            streamResult.AnimePahe = {
-              available: true,
-              stream_url: url,
-              embed: embedHtml,
-              provider: provider || "AnimePahe",
-            }
           }
         } else if (source === "Unity") {
           const url = typeof data === "string" ? data : data.stream_url

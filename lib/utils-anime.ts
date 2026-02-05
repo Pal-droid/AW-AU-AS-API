@@ -218,20 +218,19 @@ export async function shouldMatch(
 }
 
 /**
- * Async duplicate detection and merging for AnimeWorld + AnimeSaturn + AnimePahe + Unity results
+ * Async duplicate detection and merging for AnimeWorld + AnimeSaturn + Unity results
  */
 export async function detectDuplicates(
   animeworldResults: any[],
   animesaturnResults: any[],
-  animepaheResults: any[] = [],
+  _animepaheResults: any[] = [],
   unityResults: any[] = [],
-  heavenResults: any[] = [], // Added Heaven parameter
+  heavenResults: any[] = [],
 ): Promise<any[]> {
   const unifiedResults: any[] = []
   const usedAnimesaturn = new Set<number>()
-  const usedAnimePahe = new Set<number>()
   const usedUnity = new Set<number>()
-  const usedHeaven = new Set<number>() // Track used Heaven results
+  const usedHeaven = new Set<number>()
 
   for (const awResult of animeworldResults) {
     const sources = [{ name: "AnimeWorld", url: awResult.url, id: awResult.id }]
@@ -244,51 +243,6 @@ export async function detectDuplicates(
       if (await shouldMatch(awResult.id, asResult.id, awResult.title, asResult.title, awResult.altTitle)) {
         bestMatch = [i, asResult]
         break
-      }
-    }
-
-    let apMatch: [number, any] | null = null
-    for (let i = 0; i < animepaheResults.length; i++) {
-      if (usedAnimePahe.has(i)) continue
-      const apResult = animepaheResults[i]
-
-      const normalizedAW = normalizeTitle(awResult.title)
-      const normalizedAP = normalizeTitle(apResult.title)
-
-      if (hasSignificantDifference(normalizedAW, normalizedAP)) {
-        if (awResult.altTitle) {
-          const normalizedAlt = normalizeTitle(awResult.altTitle)
-          if (!hasSignificantDifference(normalizedAlt, normalizedAP)) {
-            const altSimilarity = stringSimilarity(normalizedAlt, normalizedAP)
-            console.log(
-              `[v1] AnimePahe altTitle similarity: "${normalizedAlt}" vs "${normalizedAP}" = ${altSimilarity}`,
-            )
-            if (altSimilarity >= 0.8) {
-              apMatch = [i, apResult]
-              break
-            }
-          }
-        }
-        continue
-      }
-
-      const similarity = stringSimilarity(normalizedAW, normalizedAP)
-
-      if (similarity >= 0.8) {
-        apMatch = [i, apResult]
-        break
-      }
-
-      if (awResult.altTitle) {
-        const normalizedAlt = normalizeTitle(awResult.altTitle)
-        if (!hasSignificantDifference(normalizedAlt, normalizedAP)) {
-          const altSimilarity = stringSimilarity(normalizedAlt, normalizedAP)
-          console.log(`[v1] AnimePahe altTitle similarity: "${normalizedAlt}" vs "${normalizedAP}" = ${altSimilarity}`)
-          if (altSimilarity >= 0.8) {
-            apMatch = [i, apResult]
-            break
-          }
-        }
       }
     }
 
@@ -383,12 +337,6 @@ export async function detectDuplicates(
       usedAnimesaturn.add(i)
       sources.push({ name: "AnimeSaturn", url: asResult.url, id: asResult.id })
 
-      if (apMatch) {
-        const [j, apResult] = apMatch
-        usedAnimePahe.add(j)
-        sources.push({ name: "AnimePahe", url: apResult.url, id: apResult.id })
-      }
-
       if (auMatch) {
         const [k, auResult] = auMatch
         usedUnity.add(k)
@@ -412,12 +360,6 @@ export async function detectDuplicates(
         has_multi_servers: sources.length > 1,
       })
     } else {
-      if (apMatch) {
-        const [j, apResult] = apMatch
-        usedAnimePahe.add(j)
-        sources.push({ name: "AnimePahe", url: apResult.url, id: apResult.id })
-      }
-
       if (auMatch) {
         const [k, auResult] = auMatch
         usedUnity.add(k)
@@ -436,12 +378,10 @@ export async function detectDuplicates(
         images: {
           poster:
             awResult.poster ||
-            (apMatch ? apMatch[1].poster : null) ||
             (auMatch ? auMatch[1].poster : null) ||
             (hsMatch ? hsMatch[1].poster : null),
           cover:
             awResult.cover ||
-            (apMatch ? apMatch[1].cover : null) ||
             (auMatch ? auMatch[1].cover : null) ||
             (hsMatch ? hsMatch[1].cover : null),
         },
@@ -456,26 +396,6 @@ export async function detectDuplicates(
     if (!usedAnimesaturn.has(i)) {
       const asResult = animesaturnResults[i]
       const sources = [{ name: "AnimeSaturn", url: asResult.url, id: asResult.id }]
-
-      let apMatch: [number, any] | null = null
-      for (let j = 0; j < animepaheResults.length; j++) {
-        if (usedAnimePahe.has(j)) continue
-        const apResult = animepaheResults[j]
-
-        const normalizedAS = normalizeTitle(asResult.title)
-        const normalizedAP = normalizeTitle(apResult.title)
-
-        if (hasSignificantDifference(normalizedAS, normalizedAP)) {
-          continue
-        }
-
-        const similarity = stringSimilarity(normalizedAS, normalizedAP)
-
-        if (similarity >= 0.8) {
-          apMatch = [j, apResult]
-          break
-        }
-      }
 
       let auMatch: [number, any] | null = null
       for (let k = 0; k < unityResults.length; k++) {
@@ -517,12 +437,6 @@ export async function detectDuplicates(
         }
       }
 
-      if (apMatch) {
-        const [j, apResult] = apMatch
-        usedAnimePahe.add(j)
-        sources.push({ name: "AnimePahe", url: apResult.url, id: apResult.id })
-      }
-
       if (auMatch) {
         const [k, auResult] = auMatch
         usedUnity.add(k)
@@ -541,85 +455,12 @@ export async function detectDuplicates(
         images: {
           poster:
             asResult.poster ||
-            (apMatch ? apMatch[1].poster : null) ||
             (auMatch ? auMatch[1].poster : null) ||
             (hsMatch ? hsMatch[1].poster : null),
           cover:
             asResult.cover ||
-            (apMatch ? apMatch[1].cover : null) ||
             (auMatch ? auMatch[1].cover : null) ||
             (hsMatch ? hsMatch[1].cover : null),
-        },
-        sources,
-        has_multi_servers: sources.length > 1,
-      })
-    }
-  }
-
-  // Add remaining unmatched AnimePahe results
-  for (let i = 0; i < animepaheResults.length; i++) {
-    if (!usedAnimePahe.has(i)) {
-      const apResult = animepaheResults[i]
-      const sources = [{ name: "AnimePahe", url: apResult.url, id: apResult.id }]
-
-      let auMatch: [number, any] | null = null
-      for (let k = 0; k < unityResults.length; k++) {
-        if (usedUnity.has(k)) continue
-        const auResult = unityResults[k]
-
-        const normalizedAP = normalizeTitle(apResult.title)
-        const normalizedAU = normalizeTitle(auResult.title)
-
-        if (hasSignificantDifference(normalizedAP, normalizedAU)) {
-          continue
-        }
-
-        const similarity = stringSimilarity(normalizedAP, normalizedAU)
-
-        if (similarity >= 0.8) {
-          auMatch = [k, auResult]
-          break
-        }
-      }
-
-      let hsMatch: [number, any] | null = null
-      for (let l = 0; l < heavenResults.length; l++) {
-        if (usedHeaven.has(l)) continue
-        const hsResult = heavenResults[l]
-
-        const normalizedAP = normalizeTitle(apResult.title)
-        const normalizedHS = normalizeTitle(hsResult.title)
-
-        if (hasSignificantDifference(normalizedAP, normalizedHS)) {
-          continue
-        }
-
-        const similarity = stringSimilarity(normalizedAP, normalizedHS)
-
-        if (similarity >= 0.8) {
-          hsMatch = [l, hsResult]
-          break
-        }
-      }
-
-      if (auMatch) {
-        const [k, auResult] = auMatch
-        usedUnity.add(k)
-        sources.push({ name: "Unity", url: auResult.url, id: auResult.id })
-      }
-
-      if (hsMatch) {
-        const [l, hsResult] = hsMatch
-        usedHeaven.add(l)
-        sources.push({ name: "Heaven", url: hsResult.url, id: hsResult.id })
-      }
-
-      unifiedResults.push({
-        title: apResult.title,
-        description: apResult.description,
-        images: {
-          poster: apResult.poster || (auMatch ? auMatch[1].poster : null) || (hsMatch ? hsMatch[1].poster : null),
-          cover: apResult.cover || (auMatch ? auMatch[1].cover : null) || (hsMatch ? hsMatch[1].cover : null),
         },
         sources,
         has_multi_servers: sources.length > 1,

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { AnimeWorldScraper, AnimeSaturnScraper, AnimePaheScraper, UnityScraper } from "@/lib/scrapers"
+import { AnimeWorldScraper, AnimeSaturnScraper, UnityScraper } from "@/lib/scrapers"
 import { detectDuplicates } from "@/lib/utils-anime"
 import { getQueryParams } from "@/lib/query-utils"
 
@@ -29,24 +29,19 @@ export async function GET(request: Request) {
 
     const animeworldScraper = new AnimeWorldScraper()
     const animesaturnScraper = new AnimeSaturnScraper()
-    const animepaheScraper = new AnimePaheScraper()
     const unityScraper = new UnityScraper()
 
     // Track individual scraper timings
     const awStartTime = Date.now()
     const asStartTime = Date.now()
-    const apStartTime = Date.now()
     const auStartTime = Date.now()
 
-    const [animeworldResults, animesaturnResults, animepaheResults, unityResults] = await Promise.allSettled([
+    const [animeworldResults, animesaturnResults, unityResults] = await Promise.allSettled([
       animeworldScraper.search(query).finally(() => {
         console.log(`[TIMING] [AnimeWorld] [${Date.now() - awStartTime}ms]`)
       }),
       animesaturnScraper.search(query).finally(() => {
         console.log(`[TIMING] [AnimeSaturn] [${Date.now() - asStartTime}ms]`)
-      }),
-      animepaheScraper.search(query).finally(() => {
-        console.log(`[TIMING] [AnimePahe] [${Date.now() - apStartTime}ms]`)
       }),
       unityScraper.search(query).finally(() => {
         console.log(`[TIMING] [Unity] [${Date.now() - auStartTime}ms]`)
@@ -58,7 +53,6 @@ export async function GET(request: Request) {
 
     const awResults = animeworldResults.status === "fulfilled" ? animeworldResults.value : []
     const asResults = animesaturnResults.status === "fulfilled" ? animesaturnResults.value : []
-    const apResults = animepaheResults.status === "fulfilled" ? animepaheResults.value : []
     const auResults = unityResults.status === "fulfilled" ? unityResults.value : []
 
     // Log errors if any scraper failed
@@ -68,19 +62,16 @@ export async function GET(request: Request) {
     if (animesaturnResults.status === "rejected") {
       console.log(`[ERROR] [AnimeSaturn] [${animesaturnResults.reason}]`)
     }
-    if (animepaheResults.status === "rejected") {
-      console.log(`[ERROR] [AnimePahe] [${animepaheResults.reason}]`)
-    }
     if (unityResults.status === "rejected") {
       console.log(`[ERROR] [Unity] [${unityResults.reason}]`)
     }
 
     console.log(
-      `[RESULTS] [Counts] [AW: ${awResults.length}, AS: ${asResults.length}, AP: ${apResults.length}, AU: ${auResults.length}]`,
+      `[RESULTS] [Counts] [AW: ${awResults.length}, AS: ${asResults.length}, AU: ${auResults.length}]`,
     )
 
     const dedupeStartTime = Date.now()
-    const unifiedResults = await detectDuplicates(awResults, asResults, apResults, auResults)
+    const unifiedResults = await detectDuplicates(awResults, asResults, [], auResults)
     console.log(`[TIMING] [DuplicateDetection] [${Date.now() - dedupeStartTime}ms]`)
 
     console.log(`[RESULTS] [Unified] [${unifiedResults.length} items]`)
